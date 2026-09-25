@@ -51,7 +51,19 @@ migrations. It ends by telling you what to do next.
 
 - `pnpm dev` runs the API and the web app together.
 - `pnpm check <phase>` runs that phase's acceptance tests and prints a scoreboard. `pnpm check`
-  with no argument runs everything.
+  with no argument runs every phase and prints a summary table. Add `--verbose` to see the raw
+  test output as it runs. For example, `pnpm check 1` after finishing the schema stories prints:
+
+  ```
+  Phase 1: 4/4 passing
+    ✓ TestPhase1_OrgsTableExists
+    ✓ TestPhase1_MembershipRoleConstraint
+    ✓ TestPhase1_TaskStatusConstraint
+    ✓ TestPhase1_DependencyCycleRejected
+  ```
+
+  A failing test shows `✗` with the first line of the failure message underneath it, and the
+  command exits non-zero.
 - Run `claude` in this folder any time you want to ask your mentor a question, get a hint, or
   have your code reviewed.
 
