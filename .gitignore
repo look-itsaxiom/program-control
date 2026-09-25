@@ -1,0 +1,7 @@
+node_modules
+web/dist
+.env
+api/bin
+*.log
+.superpowers
+.claude/scheduled_tasks.lock
