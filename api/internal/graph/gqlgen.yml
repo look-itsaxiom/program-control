@@ -1,0 +1,21 @@
+# gqlgen configuration. Paths below are relative to api/ (run gqlgen from there; see README.md
+# in this folder for the exact command, since this config does not live at the module root).
+schema:
+  - internal/graph/schema.graphqls
+
+exec:
+  filename: internal/graph/generated/generated.go
+  package: generated
+
+model:
+  filename: internal/graph/model/models_gen.go
+  package: model
+
+resolver:
+  layout: follow-schema
+  dir: internal/graph
+  package: graph
+
+# autobind and models: left empty. Fill these in once you have a schema and domain types to wire
+# gqlgen's generated models to your own store types, if you want that instead of gqlgen-owned
+# models.

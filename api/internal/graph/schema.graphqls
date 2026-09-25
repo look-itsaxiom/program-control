@@ -1,0 +1,2 @@
+# Your GraphQL schema goes here. It is empty until phase 4; write your types, queries, and
+# mutations, then run `go tool gqlgen generate` from api/ to generate resolvers and models.
