@@ -1,0 +1,19 @@
+{
+  "name": "program-control",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "doctor": "node scripts/doctor-launch.mjs",
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "check": "node scripts/check.mjs",
+    "db:up": "node scripts/db.mjs up",
+    "db:down": "node scripts/db.mjs down",
+    "db:migrate": "node scripts/db.mjs migrate",
+    "db:status": "node scripts/db.mjs status",
+    "db:reset": "node scripts/db.mjs reset",
+    "api:test": "node scripts/db.mjs ensure && cd api && go test ./...",
+    "web:test": "pnpm --filter web test"
+  }
+}
