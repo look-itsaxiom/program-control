@@ -66,9 +66,36 @@ check() {
   fi
 }
 
+go_note=""
+
+# go gets its own check: the project's go.mod needs 1.26 (its pinned dependencies require it),
+# but any Go 1.22+ can build it, because `go` auto-downloads the toolchain go.mod asks for. So
+# 1.22-1.25 is "ok" with a note, not a hard failure; only below 1.22 is actually too old.
+check_go() {
+  cmd=go; hard_min=1.22; target=1.26; url=https://go.dev/dl/
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    print_row "go" "MISSING" "" "$target" "$url"
+    add_missing "go"
+    return
+  fi
+  ver=$(get_version "$cmd")
+  clean_ver=$(printf '%s' "$ver" | sed 's/[^0-9.].*$//' | sed 's/\.*$//')
+  if [ -z "$clean_ver" ] || ! version_ge "$clean_ver" "$hard_min"; then
+    print_row "go" "TOO OLD" "$ver" "$target" "$url"
+    add_missing "go"
+    return
+  fi
+  if version_ge "$clean_ver" "$target"; then
+    print_row "go" "ok" "$ver" "$target" "$url"
+  else
+    print_row "go" "ok" "$ver" "$target (auto-downloads)" "$url"
+    go_note="Go $ver found; the project's toolchain ($target) will download automatically on first use (needs network)."
+  fi
+}
+
 print_row "Tool" "Status" "Version" "Need" "Get"
 check git    true  git    2.30 https://git-scm.com/downloads
-check go     true  go     1.26 https://go.dev/dl/
+check_go
 check node   true  node   22.0 https://nodejs.org/
 check pnpm   true  pnpm   10.0 https://pnpm.io/installation
 check docker true  docker 24.0 https://www.docker.com/products/docker-desktop/
@@ -93,6 +120,10 @@ else
   add_missing "docker compose"
 fi
 print_row "docker compose" "$compose_status" "$compose_version" "v2" "Included with Docker Desktop"
+
+if [ -n "$go_note" ]; then
+  printf '\n%s\n' "$go_note"
+fi
 
 if [ -n "$missing_required" ]; then
   printf '\nRequired tools missing or too old: %s\n' "$missing_required"

@@ -9,8 +9,28 @@ function Check($name, $required, $cmd, $minVersion, $url, [scriptblock]$parse) {
   if ($minVersion -and $v) { $ok = ([version]($v -replace '[^0-9.].*$','' -replace '\.+$','') -ge [version]$minVersion) }
   $script:rows += [pscustomobject]@{ Tool=$name; Status=$(if ($ok) {'ok'} else {'TOO OLD'}); Version=$v; Need=$minVersion; Get=$url; Required=$required }
 }
+$goNote = ''
+function CheckGo {
+  $hardMin = '1.22'
+  $target = '1.26'
+  $url = 'https://go.dev/dl/'
+  $exe = Get-Command go -ErrorAction SilentlyContinue
+  if (-not $exe) { $script:rows += [pscustomobject]@{ Tool='go'; Status='MISSING'; Version=''; Need=$target; Get=$url; Required=$true }; return }
+  try { $v = (go version) -replace '^go version go','' -replace ' .*$','' } catch { $v = '' }
+  $cleanV = $v -replace '[^0-9.].*$','' -replace '\.+$',''
+  if (-not $cleanV -or [version]$cleanV -lt [version]$hardMin) {
+    $script:rows += [pscustomobject]@{ Tool='go'; Status='TOO OLD'; Version=$v; Need=$target; Get=$url; Required=$true }
+    return
+  }
+  if ([version]$cleanV -ge [version]$target) {
+    $script:rows += [pscustomobject]@{ Tool='go'; Status='ok'; Version=$v; Need=$target; Get=$url; Required=$true }
+  } else {
+    $script:rows += [pscustomobject]@{ Tool='go'; Status='ok'; Version=$v; Need="$target (auto-downloads)"; Get=$url; Required=$true }
+    $script:goNote = "Go $v found; the project's toolchain ($target) will download automatically on first use (needs network)."
+  }
+}
 Check 'git'    $true 'git'    '2.30' 'https://git-scm.com/downloads'            { (git --version) -replace 'git version ','' }
-Check 'go'     $true 'go'     '1.26' 'https://go.dev/dl/'                        { (go version) -replace '^go version go','' -replace ' .*$','' }
+CheckGo
 Check 'node'   $true 'node'   '22.0' 'https://nodejs.org/'                       { (node --version) -replace '^v','' }
 Check 'pnpm'   $true 'pnpm'   '10.0' 'https://pnpm.io/installation'              { pnpm --version }
 Check 'docker' $true 'docker' '24.0' 'https://www.docker.com/products/docker-desktop/' { (docker version --format '{{.Client.Version}}') }
@@ -24,6 +44,7 @@ $compose = 'MISSING'
 try { $cv = docker compose version --short 2>$null; if ($LASTEXITCODE -eq 0 -and $cv) { $compose = 'ok' } } catch {}
 $rows += [pscustomobject]@{ Tool='docker compose'; Status=$compose; Version=$cv; Need='v2'; Get='Included with Docker Desktop'; Required=$true }
 $rows | Format-Table Tool, Status, Version, Need, Get -AutoSize
+if ($goNote) { Write-Host "`n$goNote" }
 $missing = $rows | Where-Object { $_.Required -and $_.Status -ne 'ok' }
 if ($missing) { Write-Host "`nRequired tools missing or too old: $($missing.Tool -join ', ')" -ForegroundColor Red; exit 1 }
 Write-Host "`nEverything required is installed." -ForegroundColor Green
