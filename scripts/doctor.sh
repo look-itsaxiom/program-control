@@ -68,7 +68,7 @@ check() {
 
 print_row "Tool" "Status" "Version" "Need" "Get"
 check git    true  git    2.30 https://git-scm.com/downloads
-check go     true  go     1.22 https://go.dev/dl/
+check go     true  go     1.26 https://go.dev/dl/
 check node   true  node   22.0 https://nodejs.org/
 check pnpm   true  pnpm   10.0 https://pnpm.io/installation
 check docker true  docker 24.0 https://www.docker.com/products/docker-desktop/

@@ -1,6 +1,7 @@
 package phase_tests
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/look-itsaxiom/program-control/api/internal/testdb"
@@ -23,6 +24,25 @@ func TestPhase0_HealthEndpoint(t *testing.T) {
 	}](t, rec)
 	if body.Status != "ok" {
 		t.Fatalf("GET /healthz: got status field %q, want %q", body.Status, "ok")
+	}
+}
+
+// TestPhase0_UnknownRouteIsNotImplemented checks that the skeleton's catch-all route answers
+// every unimplemented route with the JSON error envelope, not a plain-text error.
+func TestPhase0_UnknownRouteIsNotImplemented(t *testing.T) {
+	phaseGate(t, 0)
+
+	h := newHandler(t)
+	rec := do(t, h, "GET", "/tasks", nil, nil)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("GET /tasks: got status %d, want %d", rec.Code, http.StatusNotImplemented)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("GET /tasks: got Content-Type %q, want %q", ct, "application/json")
+	}
+	if code := errorCode(t, rec); code != "not_implemented" {
+		t.Fatalf("GET /tasks: got error.code %q, want %q", code, "not_implemented")
 	}
 }
 

@@ -24,7 +24,9 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error":{"code":"not_implemented","message":"build me"}}`, http.StatusNotImplemented)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		_, _ = w.Write([]byte(`{"error":{"code":"not_implemented","message":"build me"}}`))
 	})
 
 	return mux, nil

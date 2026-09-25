@@ -15,6 +15,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/pressly/goose/v3"
 
@@ -24,6 +28,10 @@ import (
 
 const migrationsDir = "migrations"
 
+// migrationPrefix matches the four-digit numbering used across this project's migration files
+// (0001_bootstrap.sql, 0002_whatever.sql, ...).
+var migrationPrefix = regexp.MustCompile(`^(\d{4})_`)
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -31,7 +39,6 @@ func main() {
 	command := os.Args[1]
 
 	goose.SetBaseFS(migrations.FS)
-	goose.SetSequential(true)
 	if err := goose.SetDialect("postgres"); err != nil {
 		log.Fatalf("migrate: set dialect: %v", err)
 	}
@@ -40,9 +47,7 @@ func main() {
 		if len(os.Args) < 3 {
 			log.Fatal("migrate: create requires a name, e.g. `go run ./cmd/migrate create add_users`")
 		}
-		// Create writes to the real filesystem migrations directory, not the embedded FS baked
-		// in at build time, so the new file shows up for the next build.
-		if err := goose.Create(nil, migrationsDir, os.Args[2], "sql"); err != nil {
+		if err := createMigration(os.Args[2]); err != nil {
 			log.Fatalf("migrate: create: %v", err)
 		}
 		return
@@ -74,6 +79,79 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+// createMigration scaffolds a new migration file directly on the real filesystem (not the
+// embedded FS baked in at build time, so the new file shows up for the next build), numbered
+// NNNN_name.sql with four digits, one higher than the highest existing migration.
+//
+// goose's own Create (with SetSequential) pads to five digits, which sorts after this project's
+// four-digit 0001_bootstrap.sql; scanning and formatting ourselves keeps the numbering consistent.
+func createMigration(name string) error {
+	next, err := nextMigrationNumber()
+	if err != nil {
+		return err
+	}
+
+	filename := fmt.Sprintf("%04d_%s.sql", next, sanitizeMigrationName(name))
+	path := filepath.Join(migrationsDir, filename)
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
+	if err != nil {
+		return fmt.Errorf("create migration file: %w", err)
+	}
+	defer f.Close()
+
+	const template = "-- +goose Up\nSELECT 'up SQL query';\n\n-- +goose Down\nSELECT 'down SQL query';\n"
+	if _, err := f.WriteString(template); err != nil {
+		return fmt.Errorf("write migration template: %w", err)
+	}
+
+	log.Printf("Created new file: %s", path)
+	return nil
+}
+
+// nextMigrationNumber scans migrationsDir on the real filesystem for the highest NNNN_ prefix
+// among existing .sql files and returns one more than that (or 1 if there are none yet).
+func nextMigrationNumber() (int, error) {
+	entries, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		return 0, fmt.Errorf("read migrations dir: %w", err)
+	}
+
+	highest := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		match := migrationPrefix.FindStringSubmatch(entry.Name())
+		if match == nil {
+			continue
+		}
+		n, err := strconv.Atoi(match[1])
+		if err != nil {
+			continue
+		}
+		if n > highest {
+			highest = n
+		}
+	}
+	return highest + 1, nil
+}
+
+// sanitizeMigrationName lowercases name and replaces anything that isn't a letter, digit, or
+// underscore with an underscore, matching the shape goose's own snake_case naming produces.
+func sanitizeMigrationName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
 }
 
 func mustOpenDB() *sql.DB {

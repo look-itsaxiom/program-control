@@ -10,7 +10,7 @@ function Check($name, $required, $cmd, $minVersion, $url, [scriptblock]$parse) {
   $script:rows += [pscustomobject]@{ Tool=$name; Status=$(if ($ok) {'ok'} else {'TOO OLD'}); Version=$v; Need=$minVersion; Get=$url; Required=$required }
 }
 Check 'git'    $true 'git'    '2.30' 'https://git-scm.com/downloads'            { (git --version) -replace 'git version ','' }
-Check 'go'     $true 'go'     '1.22' 'https://go.dev/dl/'                        { (go version) -replace '^go version go','' -replace ' .*$','' }
+Check 'go'     $true 'go'     '1.26' 'https://go.dev/dl/'                        { (go version) -replace '^go version go','' -replace ' .*$','' }
 Check 'node'   $true 'node'   '22.0' 'https://nodejs.org/'                       { (node --version) -replace '^v','' }
 Check 'pnpm'   $true 'pnpm'   '10.0' 'https://pnpm.io/installation'              { pnpm --version }
 Check 'docker' $true 'docker' '24.0' 'https://www.docker.com/products/docker-desktop/' { (docker version --format '{{.Client.Version}}') }

@@ -80,3 +80,5 @@ docs/superpowers/  the spec and plan behind this project
   succeed before `pnpm setup` or `pnpm db:up` will work.
 - **`go: command not found` right after installing Go.** Close and reopen your terminal so it
   picks up the updated `PATH`, then try again.
+- **Go version errors.** This project needs Go 1.26 or newer; an older Go will try to download the
+  right toolchain automatically the first time you run a go command, which needs network access.
