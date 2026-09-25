@@ -12,9 +12,21 @@ add_missing() {
 }
 
 version_ge() {
+  # Pure POSIX integer comparison of dotted version strings ($1 >= $2), since
+  # stock macOS/BSD sort has no `sort -V`. Missing or non-numeric segments
+  # (e.g. a 4th field that doesn't exist) compare as 0.
   [ "$1" = "$2" ] && return 0
-  higher=$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)
-  [ "$higher" = "$1" ]
+  i=1
+  while [ "$i" -le 4 ]; do
+    a=$(printf '%s' "$1" | cut -d. -f"$i")
+    b=$(printf '%s' "$2" | cut -d. -f"$i")
+    case "$a" in ''|*[!0-9]*) a=0 ;; esac
+    case "$b" in ''|*[!0-9]*) b=0 ;; esac
+    if [ "$a" -gt "$b" ]; then return 0; fi
+    if [ "$a" -lt "$b" ]; then return 1; fi
+    i=$((i + 1))
+  done
+  return 0
 }
 
 get_version() {

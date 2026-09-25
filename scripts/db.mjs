@@ -51,13 +51,14 @@ function requireApi() {
 }
 
 function runMigrate(args) {
-  if (!requireApi()) return;
+  if (!requireApi()) return false;
   const databaseUrl = getDatabaseUrl();
   const status = run('go', ['run', './cmd/migrate', ...args], {
     cwd: 'api',
     env: { ...process.env, DATABASE_URL: databaseUrl },
   });
   if (status !== 0) process.exit(status);
+  return true;
 }
 
 switch (command) {
@@ -74,8 +75,7 @@ switch (command) {
     runMigrate(['status']);
     break;
   case 'reset':
-    runMigrate(['reset']);
-    composeUp();
+    if (runMigrate(['reset'])) composeUp();
     break;
   case 'ensure':
     if (!pgReady()) {
