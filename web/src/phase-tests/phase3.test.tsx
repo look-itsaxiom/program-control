@@ -2,7 +2,7 @@ import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it } from 'vitest';
 import App from '../App';
-import { phaseGate } from './helpers';
+import { phaseGate, rowFor, rowsInOrder, setStatus, statusOf } from './helpers';
 import { installFakeApi, SEED, type FakeApiControls } from './fake-api';
 
 const describe = phaseGate(3);
@@ -14,54 +14,12 @@ function goToProgram(programId: string, userId: string) {
   window.history.pushState({}, '', `/programs/${programId}`);
 }
 
-// rowsInOrder / titleOfRow read the board through ARIA table roles only
-// (role="row", accessible text), so they work whether the app renders a
-// real <table> or a div-based ARIA table, and regardless of column order.
-function rowsInOrder(): HTMLElement[] {
-  return screen.getAllByRole('row').slice(1); // drop the header row
-}
-
+// titleOfRow names the task a row is showing, used to assert the board's order
+// without depending on which column the title happens to live in.
 function titleOfRow(row: HTMLElement): string {
   const found = Object.values(SEED.titles).find((title) => within(row).queryByText(title));
   if (!found) throw new Error('row does not contain a known task title');
   return found;
-}
-
-function rowFor(title: string): HTMLElement {
-  const row = screen.getAllByRole('row').find((r) => within(r).queryByText(title));
-  if (!row) throw new Error(`no row found for "${title}"`);
-  return row;
-}
-
-// setStatus drives the per-row status control, which the Contract allows to
-// be a <select> or a group of buttons labelled with the task title.
-async function setStatus(user: ReturnType<typeof userEvent.setup>, title: string, status: string) {
-  const control = screen.getByLabelText(title);
-  if (control.tagName === 'SELECT') {
-    try {
-      await user.selectOptions(control, [status]);
-    } catch {
-      const capitalized = status.charAt(0).toUpperCase() + status.slice(1);
-      await user.selectOptions(control, [capitalized]);
-    }
-    return;
-  }
-  const button = within(control).getByRole('button', { name: new RegExp(`^${status}$`, 'i') });
-  await user.click(button);
-}
-
-// readStatus reads the current value of a status control back out: a
-// <select>'s .value, or, for a button group, whichever button marks itself
-// as the current selection via aria-pressed or aria-current.
-function readStatus(control: HTMLElement): string {
-  if (control.tagName === 'SELECT') {
-    return (control as HTMLSelectElement).value.toLowerCase();
-  }
-  const active = control.querySelector('[aria-pressed="true"], [aria-current="true"], [aria-current="page"]');
-  if (active) return (active.textContent ?? '').trim().toLowerCase();
-  throw new Error(
-    'could not read the status control: expected a <select> or a button group exposing the active status via aria-pressed/aria-current',
-  );
 }
 
 beforeEach(() => {
@@ -89,8 +47,8 @@ describe('phase 3 react ui', () => {
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
 
-    expect(screen.queryByText(SEED.titles.design)).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(SEED.titles.design)).toBeInTheDocument());
+    expect(screen.queryByText(SEED.titles.root)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(SEED.titles.root)).toBeInTheDocument());
   });
 
   it('S3.1 shows an empty state for a program with no tasks', async () => {
@@ -99,7 +57,7 @@ describe('phase 3 react ui', () => {
 
     const table = await screen.findByRole('table');
     await waitFor(() => {
-      expect(screen.queryByText(SEED.titles.design)).not.toBeInTheDocument();
+      expect(screen.queryByText(SEED.titles.root)).not.toBeInTheDocument();
     });
     expect(within(table).getAllByRole('row')).toHaveLength(1); // header row only
   });
@@ -108,15 +66,17 @@ describe('phase 3 react ui', () => {
     const user = userEvent.setup();
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.auth);
+    await screen.findByText(SEED.titles.branchA);
 
-    await user.type(screen.getByLabelText('Filter tasks'), 'auth');
+    // "housing" appears in exactly one seeded title, so a correct filter leaves
+    // that one row standing and drops the other five.
+    await user.type(screen.getByLabelText('Filter tasks'), 'housing');
 
     await waitFor(() => {
-      expect(screen.getByText(SEED.titles.auth)).toBeInTheDocument();
-      expect(screen.queryByText(SEED.titles.sandbox)).not.toBeInTheDocument();
-      expect(screen.queryByText(SEED.titles.docs)).not.toBeInTheDocument();
-      expect(screen.queryByText(SEED.titles.design)).not.toBeInTheDocument();
+      expect(screen.getByText(SEED.titles.branchA)).toBeInTheDocument();
+      expect(screen.queryByText(SEED.titles.blocked)).not.toBeInTheDocument();
+      expect(screen.queryByText(SEED.titles.independent)).not.toBeInTheDocument();
+      expect(screen.queryByText(SEED.titles.root)).not.toBeInTheDocument();
     });
   });
 
@@ -124,7 +84,7 @@ describe('phase 3 react ui', () => {
     const user = userEvent.setup();
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.design);
+    await screen.findByText(SEED.titles.root);
 
     const titleHeader = screen.getByRole('columnheader', { name: 'Title' });
     const clickTarget = within(titleHeader).queryByRole('button') ?? titleHeader;
@@ -151,23 +111,23 @@ describe('phase 3 react ui', () => {
     api.latency(300);
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.taskService);
+    await screen.findByText(SEED.titles.branchA);
 
-    await setStatus(user, SEED.titles.taskService, 'doing');
+    await setStatus(user, SEED.titles.branchA, 'doing');
 
     // Optimistic: visible immediately, well before the fake's delay elapses.
-    expect(readStatus(screen.getByLabelText(SEED.titles.taskService))).toBe('doing');
+    expect(statusOf(SEED.titles.branchA)).toBe('doing');
 
     // Persists once the fake resolves.
     await waitFor(
       () => {
-        expect(readStatus(screen.getByLabelText(SEED.titles.taskService))).toBe('doing');
+        expect(statusOf(SEED.titles.branchA)).toBe('doing');
       },
       { timeout: 1000 },
     );
 
     const patch = api.requests.find(
-      (r) => r.method === 'PATCH' && r.path === `/tasks/${SEED.tasks.taskService}`,
+      (r) => r.method === 'PATCH' && r.path === `/tasks/${SEED.tasks.branchA}`,
     );
     expect(patch).toBeTruthy();
   });
@@ -177,17 +137,17 @@ describe('phase 3 react ui', () => {
     api.latency(150);
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.taskService);
+    await screen.findByText(SEED.titles.branchA);
 
-    const before = readStatus(screen.getByLabelText(SEED.titles.taskService));
+    const before = statusOf(SEED.titles.branchA);
     api.failNext('server_error', 500);
 
-    await setStatus(user, SEED.titles.taskService, 'done');
-    expect(readStatus(screen.getByLabelText(SEED.titles.taskService))).toBe('done');
+    await setStatus(user, SEED.titles.branchA, 'done');
+    expect(statusOf(SEED.titles.branchA)).toBe('done');
 
     await waitFor(
       () => {
-        expect(readStatus(screen.getByLabelText(SEED.titles.taskService))).toBe(before);
+        expect(statusOf(SEED.titles.branchA)).toBe(before);
       },
       { timeout: 1000 },
     );
@@ -202,18 +162,20 @@ describe('phase 3 react ui', () => {
   it('S3.5 shows a Ready badge exactly on tasks that are todo with every predecessor done', async () => {
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.design);
+    await screen.findByText(SEED.titles.root);
 
-    // Diamond: design(done) -> auth(todo), taskService(todo) -> integration(todo).
-    // auth and taskService are ready (their only predecessor, design, is done).
-    // integration is not ready (its predecessors aren't both done yet).
-    // docs (doing) and sandbox (blocked, no predecessors) are not ready either.
-    const readyTitles = [SEED.titles.auth, SEED.titles.taskService];
+    // The diamond: root -> branchA, root -> branchB, both -> join, every one of
+    // them todo. root and independent are ready, each being todo with nothing
+    // to wait on. branchA and branchB are not, because root is still todo, and
+    // join is not, because neither branch is done. blocked has no predecessors
+    // either, but a person has already called it unworkable, so it is never
+    // ready no matter what its dependencies look like.
+    const readyTitles = [SEED.titles.root, SEED.titles.independent];
     const notReadyTitles = [
-      SEED.titles.design,
-      SEED.titles.integration,
-      SEED.titles.docs,
-      SEED.titles.sandbox,
+      SEED.titles.branchA,
+      SEED.titles.branchB,
+      SEED.titles.join,
+      SEED.titles.blocked,
     ];
 
     for (const title of readyTitles) {
@@ -228,28 +190,28 @@ describe('phase 3 react ui', () => {
     const user = userEvent.setup();
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.design);
+    await screen.findByText(SEED.titles.root);
 
-    // design has no predecessors today; auth already depends on design.
-    // Making auth a predecessor of design would close a cycle.
-    const select = screen.getByLabelText(`Add dependency to ${SEED.titles.design}`);
+    // root has no predecessors today; branchA already depends on root.
+    // Making branchA a predecessor of root would close a cycle.
+    const select = screen.getByLabelText(`Add dependency to ${SEED.titles.root}`);
     try {
-      await user.selectOptions(select, [SEED.titles.auth]);
+      await user.selectOptions(select, [SEED.titles.branchA]);
     } catch {
-      await user.selectOptions(select, [SEED.tasks.auth]);
+      await user.selectOptions(select, [SEED.tasks.branchA]);
     }
 
     await waitFor(() => {
-      expect(within(rowFor(SEED.titles.design)).getByText(/cycle/i)).toBeInTheDocument();
+      expect(within(rowFor(SEED.titles.root)).getByText(/cycle/i)).toBeInTheDocument();
     });
 
-    expect(api.hasDependency(SEED.tasks.auth, SEED.tasks.design)).toBe(false);
+    expect(api.hasDependency(SEED.tasks.branchA, SEED.tasks.root)).toBe(false);
   });
 
   it('S3.6 does not show internal note text to a caller outside the owning org', async () => {
     goToProgram(SEED.programId, SEED.users.bob);
     render(<App />);
-    await screen.findByText(SEED.titles.design);
+    await screen.findByText(SEED.titles.root);
 
     expect(screen.queryByText(SEED.internalNoteText)).not.toBeInTheDocument();
   });

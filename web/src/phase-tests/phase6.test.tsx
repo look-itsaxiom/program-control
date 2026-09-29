@@ -10,7 +10,7 @@
 import { render, screen, within, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import App from '../App';
-import { phaseGate } from './helpers';
+import { phaseGate, rowFor, statusOf } from './helpers';
 import { installFakeApi, SEED, type FakeApiControls } from './fake-api';
 
 const describe = phaseGate(6);
@@ -20,27 +20,6 @@ let api: FakeApiControls;
 function goToProgram(programId: string, userId: string) {
   localStorage.setItem('programControl.userId', userId);
   window.history.pushState({}, '', `/programs/${programId}`);
-}
-
-function rowFor(title: string): HTMLElement {
-  const row = screen.getAllByRole('row').find((r) => within(r).queryByText(title));
-  if (!row) throw new Error(`no row found for "${title}"`);
-  return row;
-}
-
-// readStatus reads the current value of a row's status control: a <select>'s .value, or, for a
-// button group, whichever button marks itself as the current selection via aria-pressed or
-// aria-current. Mirrors phase3.test.tsx's helper of the same name (each phase's test file is
-// self-contained).
-function readStatus(control: HTMLElement): string {
-  if (control.tagName === 'SELECT') {
-    return (control as HTMLSelectElement).value.toLowerCase();
-  }
-  const active = control.querySelector('[aria-pressed="true"], [aria-current="true"], [aria-current="page"]');
-  if (active) return (active.textContent ?? '').trim().toLowerCase();
-  throw new Error(
-    'could not read the status control: expected a <select> or a button group exposing the active status via aria-pressed/aria-current',
-  );
 }
 
 // FakeEventSource is a minimal, fully test-controlled stand-in for the browser's EventSource. The
@@ -96,7 +75,7 @@ describe('phase 6 realtime', () => {
   it('S6.3 updates a row when the stream emits task.updated, without issuing a new request', async () => {
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.design);
+    await screen.findByText(SEED.titles.root);
 
     const source = FakeEventSource.instances.at(-1);
     if (!source) {
@@ -107,14 +86,14 @@ describe('phase 6 realtime', () => {
     expect(source.url).toContain(SEED.programId);
 
     const requestCountBeforeEvent = api.requests.length;
-    const initialStatus = readStatus(screen.getByLabelText(SEED.titles.design));
+    const initialStatus = statusOf(SEED.titles.root);
     const newStatus = initialStatus === 'doing' ? 'blocked' : 'doing';
 
     source.emit('task.updated', {
-      id: SEED.tasks.design,
+      id: SEED.tasks.root,
       programId: SEED.programId,
       orgId: SEED.orgs.customer,
-      title: SEED.titles.design,
+      title: SEED.titles.root,
       status: newStatus,
       estimateMinutes: null,
       assigneeId: null,
@@ -125,11 +104,15 @@ describe('phase 6 realtime', () => {
     });
 
     await waitFor(() => {
-      expect(readStatus(screen.getByLabelText(SEED.titles.design))).toBe(newStatus);
+      expect(statusOf(SEED.titles.root)).toBe(newStatus);
     });
 
-    const row = rowFor(SEED.titles.design);
-    expect(within(row)).toBeTruthy(); // the row still exists and is addressable after the update
+    // The event updated the existing row in place. It did not append a second row for the same
+    // task, and it did not drop the task's other columns while writing the new status in.
+    const row = rowFor(SEED.titles.root);
+    expect(within(row).getByText(SEED.titles.root)).toBeInTheDocument();
+    expect(screen.getAllByRole('row').filter((r) => within(r).queryByText(SEED.titles.root))).toHaveLength(1);
+    expect(screen.getAllByRole('row')).toHaveLength(Object.keys(SEED.titles).length + 1);
 
     // The whole point of a push-based update is that the client did not have to ask again.
     expect(api.requests.length).toBe(requestCountBeforeEvent);
@@ -138,12 +121,12 @@ describe('phase 6 realtime', () => {
   it('S6.3 ignores a task.updated event for a task the current program is not showing', async () => {
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.design);
+    await screen.findByText(SEED.titles.root);
 
     const source = FakeEventSource.instances.at(-1);
     if (!source) throw new Error('App did not construct an EventSource for the program stream');
 
-    const beforeStatus = readStatus(screen.getByLabelText(SEED.titles.design));
+    const beforeStatus = statusOf(SEED.titles.root);
 
     source.emit('task.updated', {
       id: 'task-not-in-this-program',
@@ -162,7 +145,7 @@ describe('phase 6 realtime', () => {
     // Give any (incorrect) re-render a moment to happen, then confirm nothing about the visible
     // board changed because of an event naming a task it never showed.
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(readStatus(screen.getByLabelText(SEED.titles.design))).toBe(beforeStatus);
+    expect(statusOf(SEED.titles.root)).toBe(beforeStatus);
     expect(screen.queryByText('Unrelated task from elsewhere')).not.toBeInTheDocument();
   });
 });
