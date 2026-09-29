@@ -216,6 +216,29 @@ func TestPhase2_S2_2_ListOrdersByDueDateThenCreatedAt(t *testing.T) {
 			t.Fatalf("S2.2: task %s has no due date and should sort after every dated task", tk.ID)
 		}
 	}
+
+	// The fixture's six tasks all have no due date, so they tie there and the created_at tiebreak
+	// alone decides their order. seedWorld creates them a minute apart, in this order.
+	byCreation := []struct {
+		id   string
+		name string
+	}{
+		{w.RootTaskID, "Root"},
+		{w.BranchATaskID, "BranchA"},
+		{w.BranchBTaskID, "BranchB"},
+		{w.JoinTaskID, "Join"},
+		{w.IndependentTaskID, "Independent"},
+		{w.BlockedTaskID, "Blocked"},
+	}
+	for i := 1; i < len(byCreation); i++ {
+		earlier, current := byCreation[i-1], byCreation[i]
+		if pos[earlier.id] >= pos[current.id] {
+			t.Fatalf(
+				"S2.2: among tasks tying on due date, %s was created before %s and must sort first, but came back at position %d against %d",
+				earlier.name, current.name, pos[earlier.id], pos[current.id],
+			)
+		}
+	}
 }
 
 func TestPhase2_S2_2_ListFiltersByStatus(t *testing.T) {

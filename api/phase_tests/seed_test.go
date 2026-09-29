@@ -23,7 +23,8 @@ import (
 //     "blocked" despite also having no predecessors). Every task starts "todo" except Blocked,
 //     which starts "blocked". Root carries the fixture's one internal note, and task ownership is
 //     deliberately spread across all three organizations so that S2.8's tenant rules are
-//     exercised on more than one owner.
+//     exercised on more than one owner. The six tasks are created a minute apart, in the order
+//     listed above, so S2.2's created_at tiebreak has something real to order.
 //
 // Nothing about how these rows got into the database is part of what a test may assume; only the
 // ids, the relationships, and the statuses named here are.
@@ -77,42 +78,57 @@ func seedWorld(t *testing.T, pool *pgxpool.Pool) World {
 	mustInsertProgramShare(t, pool, w.ProgramID, w.VendorAOrgID, "editor")
 	mustInsertProgramShare(t, pool, w.ProgramID, w.VendorBOrgID, "viewer")
 
+	// The fixture's tasks are created a minute apart, oldest first, so S2.2's created_at tiebreak
+	// is a real ordering an implementation can get wrong. Seeded within one instant, as they were
+	// before, any order at all would satisfy the test by accident.
+	base := time.Now().Add(-time.Hour).Truncate(time.Second)
+	at := func(minutes int) *time.Time {
+		moment := base.Add(time.Duration(minutes) * time.Minute)
+		return &moment
+	}
+
 	w.RootTaskID = seedTask(t, pool, seedTaskArgs{
 		ProgramID:    w.ProgramID,
 		OrgID:        w.CustomerOrgID,
 		Title:        "Draft engine spec",
 		Status:       "todo",
 		InternalNote: strPtr("Vendor B under-bid this contract; do not disclose the target margin."),
+		CreatedAt:    at(0),
 	})
 	w.BranchATaskID = seedTask(t, pool, seedTaskArgs{
 		ProgramID: w.ProgramID,
 		OrgID:     w.VendorAOrgID,
 		Title:     "Machine the housing",
 		Status:    "todo",
+		CreatedAt: at(1),
 	})
 	w.BranchBTaskID = seedTask(t, pool, seedTaskArgs{
 		ProgramID: w.ProgramID,
 		OrgID:     w.VendorBOrgID,
 		Title:     "Cast the manifold",
 		Status:    "todo",
+		CreatedAt: at(2),
 	})
 	w.JoinTaskID = seedTask(t, pool, seedTaskArgs{
 		ProgramID: w.ProgramID,
 		OrgID:     w.CustomerOrgID,
 		Title:     "Assemble and test",
 		Status:    "todo",
+		CreatedAt: at(3),
 	})
 	w.IndependentTaskID = seedTask(t, pool, seedTaskArgs{
 		ProgramID: w.ProgramID,
 		OrgID:     w.VendorAOrgID,
 		Title:     "Order replacement gaskets",
 		Status:    "todo",
+		CreatedAt: at(4),
 	})
 	w.BlockedTaskID = seedTask(t, pool, seedTaskArgs{
 		ProgramID: w.ProgramID,
 		OrgID:     w.CustomerOrgID,
 		Title:     "Certify for export",
 		Status:    "blocked",
+		CreatedAt: at(5),
 	})
 
 	mustInsertDependency(t, pool, w.RootTaskID, w.BranchATaskID)
@@ -144,12 +160,19 @@ type seedTaskArgs struct {
 	AssigneeID      *string
 	DueOn           *time.Time
 	InternalNote    *string
+	// CreatedAt sets both created_at and updated_at. When nil, seedTask uses time.Now(), which
+	// is what a one-off task in a single test wants; the fixture below sets it explicitly so its
+	// rows are ordered rather than all landing within the same instant.
+	CreatedAt *time.Time
 }
 
 // seedTask inserts a task with every fixture-relevant column, failing the test on error.
 func seedTask(t *testing.T, pool *pgxpool.Pool, args seedTaskArgs) string {
 	t.Helper()
 	now := time.Now()
+	if args.CreatedAt != nil {
+		now = *args.CreatedAt
+	}
 	var id string
 	err := pool.QueryRow(t.Context(), `
 		insert into tasks (
