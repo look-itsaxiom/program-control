@@ -12,7 +12,7 @@ handler's own code. The payoff of writing the schema first is that it becomes a 
 people (or, here, a phase's tests and a later phase's UI) can agree on before either of them has
 written an implementation; the payoff of generating resolver stubs from it is that a field you
 forget to implement is a compile error, not a runtime surprise the first time a client asks for
-it. Course lesson `110-graphql-servers-in-go`, section `01-schema-first-design`, walks through
+it. Course lesson `110-graphql-servers-in-go`, section `01-gqlgen-schema-first`, walks through
 this workflow directly, including what `gqlgen generate` actually produces and why the generated
 code is meant to be regenerated, not hand-edited.
 
@@ -25,9 +25,9 @@ matters is that a GraphQL query can ask for many fields, on many types, nested a
 in one request, and each of those fields gets its own resolver call; a naive resolver for
 `Task.assignee` that queries the database every time it runs works correctly for a single task
 and becomes the next section's problem the moment a client asks for a list of them. Course lesson
-`110-graphql-servers-in-go`, section `02-resolvers-and-the-execution-tree`, covers how the
-GraphQL executor walks a query and calls resolvers, field by field, which is the mental model you
-need before the N+1 problem makes sense.
+`110-graphql-servers-in-go`, exercise `02-resolvers-and-dataloader`, has you write these resolver
+functions yourself against a schema of the same shape, which is the mental model you need before
+the N+1 problem makes sense.
 
 ## The N+1 problem and dataloaders
 
@@ -43,10 +43,11 @@ id = any($1)`, or the Go equivalent) once, then hands each caller its own row ba
 batch. The same technique applies to predecessors. Getting this right is what S4.4's query-count
 bound is actually testing; a program with twelve tasks answering in four queries or fewer is only
 possible if assignees are batched across tasks, and predecessors are too. Course lesson
-`110-graphql-servers-in-go`, section `03-the-n-plus-one-problem`, derives the problem from first
-principles with the exact shape this project's schema has; section `04-batching-with-dataloaders`
-covers the batching technique itself, including the "one tick" batching window and why a
-dataloader's cache is scoped to a single request, never shared across requests.
+`110-graphql-servers-in-go`, section `03-resolvers-under-load`, derives the problem from first
+principles with the exact shape this project's schema has; its exercise
+`02-resolvers-and-dataloader` covers the batching technique itself, including the "one tick"
+batching window and why a dataloader's cache is scoped to a single request, never shared across
+requests.
 
 ## Field-level visibility, not query-level
 
@@ -74,10 +75,10 @@ changes, with no code written to propagate the update by hand. This is worth tre
 decision, not a free lunch: it only works if your queries and mutations actually request `id` (so
 the cache has something to normalize by) and enough of an object's fields that the merge produces
 a complete picture, not a partially-overwritten one. Course lesson `111-apollo-client-in-react`,
-section `01-normalized-caching`, is the concrete walkthrough of this mechanism; section
-`02-mutations-and-the-cache` covers specifically what a mutation's own selection set needs to
-include for its result to update every other place that data is shown, which is the crux of
-S4.5's cache-normalization story.
+section `03-the-cache-is-the-state-manager`, is the concrete walkthrough of this mechanism; lesson
+`77-graphql-clients`, section `03-mutations-optimism-and-architecture`, covers specifically what a
+mutation's own selection set needs to include for its result to update every other place that
+data is shown, which is the crux of S4.5's cache-normalization story.
 
 ## Two transports, one domain
 
@@ -88,8 +89,8 @@ second transport on top of an already-working one is a useful forcing function: 
 your REST-era UI code baked in about how data arrives (one big response, no field-level nulls,
 errors as HTTP status codes) has to get named and either generalized or duplicated, and naming
 those assumptions is usually more valuable than the two-transports feature itself. Course lesson
-`108-indexes-and-explain`, section `03-observability-you-can-query`, is not about GraphQL at all,
-but it is where `Config.QueryTracer` (S4.4) comes from as a pattern: instrument the boundary
+`108-indexes-and-explain`, section `01-how-postgres-decides`, is not about GraphQL at all, but it
+is where `Config.QueryTracer` (S4.4) comes from as a pattern: instrument the boundary
 (here, every connection the handler opens) rather than trying to infer behavior from source code
 alone, and you can verify a performance contract instead of arguing about whether a resolver
 "should" be efficient.
@@ -104,9 +105,10 @@ array instead, one entry per thing that went wrong, each with a `message` meant 
 caller back to parsing prose to decide what to do next, which is exactly the failure mode a REST
 API's status code plus a `code` field in its JSON body was designed to avoid; a `extensions.code`
 that names a fixed, known set of failure kinds (S4.6's four) keeps that same guarantee for
-GraphQL. Course lesson `077-error-handling-conventions`, section `02-structured-errors-over-prose`,
-covers this idea in a transport-agnostic way; it is worth reading with REST's error envelope
-(phase 2's `{"error": {"code": ...}}`) in mind, since S4.6 is the same idea, ported.
+GraphQL. Course lesson `110-graphql-servers-in-go`, section `01-gqlgen-schema-first`, covers
+constructing these errors with `gqlerror` and its `Extensions` map; it is worth reading with
+REST's error envelope (phase 2's `{"error": {"code": ...}}`) in mind, since S4.6 is the same idea,
+ported.
 
 ## Questions to answer for yourself
 

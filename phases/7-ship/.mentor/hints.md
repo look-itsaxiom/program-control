@@ -10,8 +10,9 @@ prose; it never contains code, and it should still leave the learner writing the
    title uniqueness solved for programs. What's the equivalent move for a seed script: check
    before inserting, or let a constraint do the rejecting and treat "already exists" as success
    rather than failure?
-2. Course lesson `93-release-safety`, section `02-idempotent-setup-scripts`, covers exactly this:
-   an upsert (`insert ... on conflict do nothing` or `do update`), or a "does the demo org already
+2. Course lesson `93-release-safety`, exercise `02-build-a-flag-client`, is the nearest worked
+   example of a routine that has to stay safe to run again: same idea, different subject. Here an
+   upsert (`insert ... on conflict do nothing` or `do update`), or a "does the demo org already
    exist by a well-known name" check before seeding, are both legitimate approaches.
 3. Give the seeded organizations, users, and program well-known, fixed names (not randomly
    generated ones) so a second run can recognize "this already exists" instead of blindly
@@ -24,9 +25,9 @@ prose; it never contains code, and it should still leave the learner writing the
 
 1. The workflow file already reads `vars.PHASE`. What's actually left to do here versus what's
    already built?
-2. Course lesson `92-ci-cd-with-github-actions`, section `03-repository-variables`, covers the
-   difference between a repository variable (`vars`) and a secret, and the `gh variable set`
-   command for setting one from the CLI instead of the web UI.
+2. Course lesson `92-ci-cd-with-github-actions`, section `03-deploys-gates-and-not-getting-owned`,
+   covers the difference between a repository variable (`vars`) and a secret, and why that
+   difference matters before a workflow reads either one.
 3. There's no code change in this story; it's operational. Run `gh variable set PHASE --body 7`
    against your own fork or repo, then re-run the workflow (`gh workflow run ci.yml` or push a
    commit) and confirm both jobs are green at that phase. If either job goes red, that's real
@@ -37,9 +38,8 @@ prose; it never contains code, and it should still leave the learner writing the
 
 1. What's a decision you made in phases 5 or 6 (or earlier) that the contract explicitly left open
    ("not part of the contract, tests check outcome not mechanism")? That's `## Decisions` material.
-2. Course lesson `114-take-home-rehearsal`, section `01-the-readme-a-reviewer-reads-first`, is
-   about writing this section for a reviewer who has fifteen minutes and hasn't opened your editor
-   yet.
+2. Course lesson `114-take-home-rehearsal`, section `01-how-take-homes-are-graded`, is about what a
+   reviewer with fifteen minutes and no editor open actually reads first.
 3. No code here either. For `## Decisions`, pick 3 to 5 real choices (retry backoff shape, how you
    implemented the predecessor-visibility query, REST vs. GraphQL for something, whatever actually
    came up) and say what you chose and the one-sentence reason. For `## Not done`, list anything

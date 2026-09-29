@@ -24,8 +24,8 @@ seemed obvious. Gating CI's phase-by-phase test run behind a repository variable
 than hardcoding a number is what lets this same pipeline mean something different at every stage
 of the project: green at `PHASE=1` is a true statement about the schema alone, and green at
 `PHASE=7` is a true statement about everything. Course lesson `92-ci-cd-with-github-actions`,
-section `01-a-pipeline-as-a-claim`, covers this idea of CI as a standing, automatically-checked
-claim rather than a one-time gate.
+section `01-a-pipeline-that-is-fast-and-honest`, covers this idea of CI as a standing,
+automatically-checked claim rather than a one-time gate.
 
 ## What you chose not to do is part of the deliverable
 
@@ -33,9 +33,10 @@ A take-home with a fixed time box always ends with things you would have done wi
 naming them explicitly, in writing, is a different signal than leaving them silently undone. "I
 didn't do X" read alongside "here's why, and here's what I'd do first with another day" tells a
 reviewer you understood the gap and made a deliberate call, which is a stronger signal than a
-project that happens to have covered everything by accident. Course lesson `93-release-safety`,
-section `01-known-gaps-are-not-failures`, is about exactly this: a documented gap versus an
-undocumented one are different outcomes even when the code is identical.
+project that happens to have covered everything by accident. Course lesson
+`114-take-home-rehearsal`, section `01-how-take-homes-are-graded`, is about exactly this: a
+documented gap and an undocumented one are different outcomes to a reviewer even when the code is
+identical.
 
 ## The interview angle
 

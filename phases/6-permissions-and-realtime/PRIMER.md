@@ -14,8 +14,8 @@ work is or isn't ready to start. The temptation is to fetch everything and strip
 response-serialization step, after the database has already done the work of finding rows the
 caller was never going to see. The better habit is to let the visibility rule shape the query
 itself, the same way S1.8 shaped an index around the query the application actually runs. Course
-lesson `112-system-design-cross-org-collaboration`, section
-`01-visibility-as-a-first-class-query`, covers this distinction.
+lesson `112-system-design-cross-org-collaboration`, section `01-framing-the-problem`, covers this
+distinction.
 
 ## Partial objects are still objects with a contract
 
@@ -48,8 +48,8 @@ the client goes away (so it stops trying to write to a connection nobody is read
 elsewhere in the server has to have a way to reach a specific open connection when the event it
 cares about happens, which a normal handler, which only ever knows about the one request it's
 currently serving, does not automatically have. Course lesson
-`112-system-design-cross-org-collaboration`, section `02-long-lived-connections`, covers the
-broadcast/subscriber shape this usually takes: something that fires an event, and a registry of
+`112-system-design-cross-org-collaboration`, section `03-realtime-conflicts-and-history`, covers
+the broadcast/subscriber shape this usually takes: something that fires an event, and a registry of
 currently-open connections it fans that event out to.
 
 ## The interview angle

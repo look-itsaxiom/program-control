@@ -8,7 +8,7 @@ prose; it never contains code, and it should still leave the learner writing the
 
 1. The `X-User-Id` header already means something to phase 2's REST handlers. Does a GraphQL
    request need a new way to authenticate, or does it just need to reach the same check?
-2. `110-graphql-servers-in-go/01-schema-first-design` covers wiring `gqlgen`'s generated
+2. `110-graphql-servers-in-go/01-gqlgen-schema-first` covers wiring `gqlgen`'s generated
    `NewExecutableSchema` into an `http.Handler` you mount alongside existing routes, not instead
    of them.
 3. Mount the generated GraphQL handler at `POST /graphql` on the same mux phase 2's routes live
@@ -25,7 +25,7 @@ prose; it never contains code, and it should still leave the learner writing the
    resolve to `null`. Is "the program doesn't exist" and "the program exists but this caller
    can't see it" one check or two, given what phase 2's REST `GET` already does for the same
    distinction?
-2. `110-graphql-servers-in-go/01-schema-first-design` shows how `gqlgen` scaffolds one resolver
+2. `110-graphql-servers-in-go/01-gqlgen-schema-first` shows how `gqlgen` scaffolds one resolver
    function per field once you fill in `schema.graphqls`; each of `Task.assignee`,
    `Task.predecessors`, `Task.internalNote`, `Program.tasks`, and `Program.readyTasks` becomes its
    own function you write, called once per task per request until S4.4 changes that.
@@ -42,8 +42,8 @@ prose; it never contains code, and it should still leave the learner writing the
    `PATCH /tasks/{id}` and `POST /tasks/{id}/dependencies` already produce. Could a mutation
    resolver just call the same internal function phase 2's handler calls, rather than
    reimplementing the status-change-plus-event-append logic a second time?
-2. `110-graphql-servers-in-go/02-resolvers-and-the-execution-tree` covers mutation resolvers
-   specifically: unlike a query field, a mutation field's resolver is expected to have a side
+2. `110-graphql-servers-in-go/02-resolvers-and-dataloader` has you write resolvers, mutation
+   resolvers included: unlike a query field, a mutation field's resolver is expected to have a side
    effect, and gqlgen generates its stub the same way it generates a query field's.
 3. Have `setTaskStatus` and `addDependency`'s resolvers call the same domain-layer functions
    phase 2's REST handlers call (extract that logic out of the handler in phase 2 if you haven't
@@ -55,10 +55,11 @@ prose; it never contains code, and it should still leave the learner writing the
 1. Run the query from S4.2 for a program with several tasks and watch what your database logs (or
    a debug print in your data-access code) show. How many statements actually ran, and does that
    number grow if you add another task?
-2. `110-graphql-servers-in-go/03-the-n-plus-one-problem` names exactly this symptom;
-   `04-batching-with-dataloaders` is the fix, including the "one batch function, called once per
-   tick, given every key requested so far" shape a dataloader has. `108-indexes-and-explain/03-
-   observability-you-can-query` is the other half: wiring `Config.QueryTracer` onto every
+2. `110-graphql-servers-in-go/03-resolvers-under-load` names exactly this symptom;
+   `02-resolvers-and-dataloader` is the fix, including the "one batch function, called once per
+   tick, given every key requested so far" shape a dataloader has.
+   `108-indexes-and-explain/01-how-postgres-decides` is the other half: wiring
+   `Config.QueryTracer` onto every
    `pgxpool.Config.ConnConfig.Tracer` (or equivalent) your handler sets up, so the count in S4.4's
    test reflects reality instead of your assumptions about it.
 3. Give `Task.assignee` and `Task.predecessors` each their own dataloader, keyed by task id (for
@@ -73,9 +74,11 @@ prose; it never contains code, and it should still leave the learner writing the
 1. Phase 3's `App` already reads a program id from the URL and a user id from `localStorage`.
    What's the smallest change that makes it also check `localStorage['programControl.transport']`
    and choose which client (REST `fetch` calls, or an Apollo `useQuery`) to render the board with?
-2. `111-apollo-client-in-react/01-normalized-caching` covers what `ApolloClient`'s `InMemoryCache`
+2. `111-apollo-client-in-react/03-the-cache-is-the-state-manager` covers what `ApolloClient`'s
+   `InMemoryCache`
    needs from your queries (an `id` field, consistently, on every type that has one) to normalize
-   entities the way S4.5's contract assumes. `02-mutations-and-the-cache` covers what a mutation's
+   entities the way S4.5's contract assumes.
+   `77-graphql-clients/03-mutations-optimism-and-architecture` covers what a mutation's
    own selection set needs to include (usually just the fields you changed, plus `id`) for its
    result to update every other query result holding the same entity, without you writing an
    `update` function by hand. If a component reads `readyTasks` from one query and a task's
@@ -96,8 +99,8 @@ prose; it never contains code, and it should still leave the learner writing the
    extensions. Have you looked at what `graphql.AddErrorf` or constructing a `*gqlerror.Error`
    directly actually accepts, rather than returning a plain `error` from a resolver and hoping
    something downstream adds a code?
-2. `077-error-handling-conventions/02-structured-errors-over-prose` is the general case;
-   `111-apollo-client-in-react/03-reading-errors-from-a-response` covers reading
+2. `110-graphql-servers-in-go/01-gqlgen-schema-first` covers building these errors on the server;
+   `111-apollo-client-in-react/01-apollo-client-4-in-a-react-19-app` covers reading
    `error.graphQLErrors[0].extensions.code` back out on the client, which is what feeds the same
    `aria-live` region phase 3 built for a failed REST write.
 3. Every place this phase's resolvers currently return a plain Go error for a client-facing

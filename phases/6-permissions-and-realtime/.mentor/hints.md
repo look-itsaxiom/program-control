@@ -10,7 +10,7 @@ prose; it never contains code, and it should still leave the learner writing the
    had to answer (walking `task_dependencies` edges). What did that walk look like, and can the
    same traversal, run backward, answer "which tasks does this one depend on, through however many
    hops"?
-2. Course lesson `112-system-design-cross-org-collaboration/01-visibility-as-a-first-class-query`
+2. Course lesson `112-system-design-cross-org-collaboration/02-relationship-permissions`
    covers building a query around "what is this caller allowed to see" as a first-class parameter,
    rather than fetching broadly and filtering the response afterward. A recursive CTE (`with
    recursive`) is the natural SQL shape for "every predecessor, however many hops away," if you
@@ -38,10 +38,11 @@ prose; it never contains code, and it should still leave the learner writing the
 1. An HTTP handler function only knows about the one request it's currently handling. What does
    the rest of your server need to hold onto so that a status change happening inside a completely
    different request (a `PATCH`) can reach every open stream connection that cares about it?
-2. Course lesson `112-system-design-cross-org-collaboration/02-long-lived-connections` covers the
-   registry-plus-broadcast shape directly: a small in-process struct holding a set of currently
-   open connections (channels, one per connection), and a `Broadcast(event)` method every write
-   path calls after a successful change, which fans the event out to each registered channel.
+2. Course lesson `112-system-design-cross-org-collaboration/03-realtime-conflicts-and-history`
+   covers the registry-plus-broadcast shape directly: a small in-process struct holding a set of
+   currently open connections (channels, one per connection), and a `Broadcast(event)` method
+   every write path calls after a successful change, which fans the event out to each registered
+   channel.
    `net/http`'s `http.Flusher` interface is what lets a handler push bytes to the client
    immediately instead of buffering until the handler returns.
 3. Keep a registry (a mutex-guarded map or slice of channels) inside the package. The

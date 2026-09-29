@@ -14,8 +14,8 @@ there is a shared secret, and the request has to prove it knows that secret with
 ever traveling over the wire in a form an eavesdropper could steal and replay. There is also no
 browser tab to show a spinner in if your handler is slow; the caller's retry policy, not your UI,
 decides what happens if you take too long. Course lesson `105-integrations-in-go`, section
-`01-webhooks-as-untrusted-input`, is about treating an inbound webhook as hostile until proven
-otherwise, which is the mindset the rest of this primer builds on.
+`01-receiving-webhooks-you-can-trust`, is about treating an inbound webhook as hostile until
+proven otherwise, which is the mindset the rest of this primer builds on.
 
 ## Proving a message wasn't tampered with, and wasn't replayed
 
@@ -26,9 +26,10 @@ that a signature alone does not solve, and a real integration has to solve both:
 outside a tolerance window catches a captured request being replayed long after the fact, and an
 idempotency check (remembering which message ids you've already handled) catches the much more
 common case of a caller's own retry logic sending the same message twice because it never saw your
-first response. Course lesson `105-integrations-in-go`, section `02-verifying-signed-webhooks`,
-covers the signature half; think about why the timestamp check and the idempotency check are both
-still necessary even with a correct signature.
+first response. Course lesson `105-integrations-in-go`, section
+`01-receiving-webhooks-you-can-trust`, covers the signature half, and its exercise
+`02-webhook-receiver` has you build one; think about why the timestamp check and the idempotency
+check are both still necessary even with a correct signature.
 
 ## Rotating a secret without an outage
 
@@ -39,8 +40,8 @@ already stopped accepting it, and every webhook sent in that window is silently 
 two secrets at once, a current one and a previous one, during a rotation window turns that outage
 into a non-event: you change the secret whenever you want, tell the vendor whenever they get to
 it, and only remove the previous value once you're confident nothing is still using it. Course
-lesson `105-integrations-in-go`, section `03-rotating-shared-secrets`, walks through why this
-two-value window is the standard pattern, not a workaround.
+lesson `105-integrations-in-go`, section `01-receiving-webhooks-you-can-trust`, walks through why
+this two-value window is the standard pattern, not a workaround.
 
 ## Don't make the caller wait for your side effects
 
@@ -52,8 +53,9 @@ times out, even though the part they actually asked you to do (accept the webhoo
 succeeded. Doing the side effect after the response has already gone out, off the request's own
 goroutine, keeps those two concerns separate: the response answers "did you get this," and
 whatever happens next answers a different question the caller was never asking. Course lesson
-`105-integrations-in-go`, section `04-background-work-and-retries`, covers this handoff and the
-retry-with-backoff pattern for the part that runs after the response.
+`105-integrations-in-go`, section `03-calling-out-clients-that-survive-outages`, covers the
+retry-with-backoff pattern for the part that runs after the response, and its exercise
+`04-resilient-client` builds it.
 
 ## The interview angle
 
