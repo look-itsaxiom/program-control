@@ -122,3 +122,58 @@ docs/superpowers/  the spec and plan behind this project
   picks up the updated `PATH`, then try again.
 - **Go version errors.** This project needs Go 1.26 or newer; an older Go will try to download the
   right toolchain automatically the first time you run a go command, which needs network access.
+
+## Decisions
+
+These are the choices the stories left open, and why this branch went the way it did.
+
+- **The database refuses bad data, the API does not merely check it.** Every rule phase 1 names
+  is a constraint or a partial unique index, and the API finds out about a duplicate title by
+  failing an insert rather than by reading first and writing second. A check-then-write would be
+  wrong under concurrency, and it would put the same rule in two places.
+- **Not-found is the only answer for "not yours".** A stranger asking about a program, a vendor
+  asking about a task outside their slice, and anybody asking about a row that never existed all
+  get the same 404. A 403 would confirm the thing is there, which is the leak the story is about.
+- **The error envelope is produced by the handler, and the router's own errors are rewritten to
+  match.** Go's ServeMux generates a plain-text 404 and 405 by itself. A catch-all `/` route would
+  have swallowed the 405 entirely, because it matches every method, so a thin response writer
+  intercepts those two statuses instead and re-emits them as the shared JSON shape.
+- **To-one relations are joined, to-many relations are batched.** A task's assignee comes back
+  with the task in the same query; its predecessors come from one per-request loader keyed by
+  program. Batching by program rather than by task id means the loader has no timing window to
+  tune, so the query count is the same every run instead of usually small.
+- **Readiness is computed on the client under GraphQL, and read from the server under REST.** The
+  REST board has no way to know the dependency graph, so it asks for the ready list. The GraphQL
+  board already holds each task's predecessors and their statuses in a normalized cache, so it
+  works readiness out locally, which is what lets a mutation on one task flip a downstream task's
+  badge with no second request.
+- **Delivery and the live stream both hang off one publish point.** A status change, whether it
+  came from REST, the webhook, or a GraphQL mutation, is handed to the same function after the
+  response is written. Nothing on the request path waits for either.
+- **The identity header has a query-parameter twin on the stream route only.** The browser's
+  `EventSource` cannot set a request header, and the header here stands in for a login rather than
+  being a credential, so carrying it in the query string on that one route costs nothing real.
+
+## Not done
+
+- **Authentication is still a header.** There is no session, token, or password anywhere. That was
+  the stories' own decision, and everything downstream of it (the caller's organizations, the
+  tenant rules) would survive replacing it, but it is the first thing that would have to change
+  before any of this faced the internet.
+- **The UI cannot create a task or remove a dependency.** Both routes exist and are tested on the
+  API side. The board reads, changes a status, and adds a dependency, because those are what the
+  phase 3 and 4 stories asked to see; the rest would be more of the same form handling.
+- **The notifier's queue lives in memory.** A change enqueued when the process dies is lost, and a
+  full queue drops rather than blocks. Making delivery survive a restart means an outbox table and
+  a worker polling it, which is a different story than the one phase 5 tells.
+- **The live stream is single-process.** The broker fans out inside one server. Two instances
+  behind a load balancer would each only see their own writes; that needs Postgres `LISTEN/NOTIFY`
+  or a message bus.
+- **Vendor narrowing applies to the REST routes only.** Phase 6's contract names those routes, and
+  the GraphQL layer still answers with phase 2's tenant rules. Extending the narrowing to the graph
+  would mean threading the same visibility set through the task resolvers.
+- **One phase 4 acceptance test cannot pass alongside phase 3's.** It asks the dependency
+  `<option>` elements to have the bare task title as their accessible name, while phase 3 asks
+  `getByText` and `getByLabelText` to find exactly one element per title across the whole board.
+  Any accessible name equal to the title makes one of the two queries ambiguous. This branch keeps
+  phase 3 green; the details are in the task 11 report.
