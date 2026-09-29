@@ -198,6 +198,19 @@ let latencyMs = 0;
 let queuedFailure: { code: string; status: number } | null = null;
 let requestLog: RequestLogEntry[] = [];
 
+// The controls above are module-level, which means a request that is still sleeping out its
+// latency when a test ends will wake up inside the *next* test and consume the failure that test
+// just queued with failNext(). Phase 3 hits this every run: its optimistic-update test leaves a
+// 300ms PATCH in flight, and the rollback test that follows queues its failure while that PATCH
+// is still asleep.
+//
+// Every install (and every reset) opens a new generation. A request remembers the generation it
+// started in, and one that comes back to find the generation moved on belongs to a test that is
+// already over: it answers without touching queuedFailure and without mutating the new test's
+// seed data. Nothing is listening for that answer, because test-setup.ts has unmounted the
+// components that asked.
+let generation = 0;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -545,8 +558,17 @@ async function fakeFetchImpl(input: RequestInfo | URL, init?: RequestInit): Prom
 
   requestLog.push({ method, path, userId, body: parsedBody });
 
+  const startedIn = generation;
   if (latencyMs > 0) {
     await sleep(latencyMs);
+  }
+
+  // Left over from a finished test: answer, but change nothing this test can see.
+  if (startedIn !== generation) {
+    return new Response(JSON.stringify(errorBody('stale_request', 'request outlived its test')), {
+      status: 599,
+      headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+    });
   }
 
   if (queuedFailure) {
@@ -570,6 +592,7 @@ async function fakeFetchImpl(input: RequestInfo | URL, init?: RequestInit): Prom
 }
 
 export function installFakeApi(): FakeApiControls {
+  generation++;
   seedNow();
   latencyMs = 0;
   queuedFailure = null;
@@ -588,6 +611,7 @@ export function installFakeApi(): FakeApiControls {
       return requestLog;
     },
     reset() {
+      generation++;
       seedNow();
       latencyMs = 0;
       queuedFailure = null;
