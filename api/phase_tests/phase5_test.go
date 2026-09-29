@@ -278,7 +278,9 @@ func TestPhase5_NotifierCalledAfterStatusChange(t *testing.T) {
 func TestPhase5_SlowNotifierDoesNotDelayResponse(t *testing.T) {
 	phaseGate(t, 5)
 	receiver := newNotifyReceiver(t)
-	receiver.sleep = 500 * time.Millisecond
+	// Two seconds is far longer than any honest request handler takes, so a response that comes
+	// back promptly can only mean the handler did not wait on delivery.
+	receiver.sleep = 2 * time.Second
 	t.Setenv("WEBHOOK_NOTIFY_URL", receiver.srv.URL)
 
 	h := newHandler(t)
@@ -292,16 +294,16 @@ func TestPhase5_SlowNotifierDoesNotDelayResponse(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("S5.2: PATCH /tasks/{id} with a slow notifier: got status %d, want %d", rec.Code, http.StatusOK)
 	}
-	if elapsed >= 500*time.Millisecond {
-		t.Fatalf("S5.2/S5.3: response took %s, which is as long as the notifier's own 500ms delay; the request must not wait on delivery", elapsed)
+	if elapsed >= 1*time.Second {
+		t.Fatalf("S5.2/S5.3: response took %s against a notifier that sleeps 2s; the request must answer without waiting on delivery, well inside 1s", elapsed)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for receiver.callCount() == 0 && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if receiver.callCount() == 0 {
-		t.Fatal("S5.2/S5.3: the slow notifier was still never called within 2s; delivery must still eventually happen off the request path")
+		t.Fatal("S5.2/S5.3: the slow notifier was still never called within 5s; delivery must still eventually happen off the request path")
 	}
 }
 
@@ -321,13 +323,15 @@ func TestPhase5_FailingNotifierRetriedThreeTimes(t *testing.T) {
 	}
 
 	// Give the retries (3 attempts, with backoff between them) time to play out, then confirm the
-	// count settles at exactly 3 and does not keep climbing forever.
-	deadline := time.Now().Add(4 * time.Second)
+	// count settles at exactly 3 and does not keep climbing forever. Ten seconds is the bound
+	// S5.2's contract states for all three attempts, so waiting any less would fail an
+	// implementation the contract allows.
+	deadline := time.Now().Add(10 * time.Second)
 	for receiver.callCount() < 3 && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 	if got := receiver.callCount(); got != 3 {
-		t.Fatalf("S5.2: failing notifier: got %d attempts within 4s, want exactly 3", got)
+		t.Fatalf("S5.2: failing notifier: got %d attempts within 10s, want exactly 3", got)
 	}
 
 	time.Sleep(300 * time.Millisecond)

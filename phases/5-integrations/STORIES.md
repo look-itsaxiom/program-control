@@ -65,7 +65,8 @@ than given up on after one failure or retried forever.
   produced, and `occurredAt` is an RFC 3339 timestamp.
 - Delivery is attempted up to 3 times total, with a backoff between attempts (the exact durations
   are not part of the contract), and is abandoned, not retried indefinitely, once 3 attempts have
-  failed.
+  failed. All three attempts complete within 10 seconds of the status change, so a backoff
+  schedule is free to grow between attempts but not to stretch past that bound.
 - When `WEBHOOK_NOTIFY_URL` is unset, no delivery attempt happens; nothing about this story blocks
   or fails a status change when nothing is configured to be notified.
 
