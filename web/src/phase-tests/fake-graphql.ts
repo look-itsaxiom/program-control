@@ -7,13 +7,14 @@
 // `localStorage['programControl.transport'] === 'graphql'`) against a fake server instead of a
 // live Go process.
 //
-// The seed mirrors fake-api.ts's SEED identities (same org, user, program, and task ids and
-// titles), so a test can log in as the same alice/bob/carol/dave and land on the same program
-// regardless of which transport it exercises. It does not import fake-api's mutable state (that
+// The seed mirrors fake-api.ts (same orgs, users, program, task ids, titles, statuses and
+// dependency shape, which in turn mirror api/phase_tests/seed_test.go), so a test can log in as
+// the same alice/bob/carol/dave and land on the same board regardless of which transport it
+// exercises. It does not import fake-api's mutable state (that
 // file keeps it module-private); it builds its own independent copy of the same scenario.
 
 import { buildSchema, execute, parse, GraphQLError, type ExecutionResult } from 'graphql';
-import { SEED } from './fake-api';
+import { SEED, SEED_TASK_ORGS } from './fake-api';
 
 // --- schema (verbatim from the phase 4 contract) ---------------------------
 
@@ -55,38 +56,40 @@ const seedUsers: SeedUser[] = [
   { id: SEED.users.dave, displayName: 'Dave Stranger', email: 'dave@nowhere.example', orgId: null },
 ];
 
-// The diamond: design -> auth, design -> taskService, auth -> integration,
-// taskService -> integration, integration -> docs (a tail). sandbox is independent.
+// The same world fake-api.ts and api/phase_tests/seed_test.go build: a diamond
+// (root -> branchA, root -> branchB, both -> join), plus independent and
+// blocked outside it. Ownership is spread across all three organizations, and
+// root carries the one internal note.
 const seedTaskDefs: SeedTask[] = [
   {
-    id: SEED.tasks.design, programId: SEED.programId, orgId: SEED.orgs.customer, title: SEED.titles.design,
-    status: 'DONE', estimateMinutes: 120, dueOn: '2026-10-01', internalNote: SEED.internalNoteText,
-    assigneeId: SEED.users.alice, predecessorIds: [],
+    id: SEED.tasks.root, programId: SEED.programId, orgId: SEED_TASK_ORGS.root, title: SEED.titles.root,
+    status: 'TODO', estimateMinutes: null, dueOn: null, internalNote: SEED.internalNoteText,
+    assigneeId: null, predecessorIds: [],
   },
   {
-    id: SEED.tasks.auth, programId: SEED.programId, orgId: SEED.orgs.customer, title: SEED.titles.auth,
-    status: 'TODO', estimateMinutes: 300, dueOn: '2026-10-05', internalNote: null,
-    assigneeId: SEED.users.alice, predecessorIds: [SEED.tasks.design],
+    id: SEED.tasks.branchA, programId: SEED.programId, orgId: SEED_TASK_ORGS.branchA, title: SEED.titles.branchA,
+    status: 'TODO', estimateMinutes: null, dueOn: null, internalNote: null,
+    assigneeId: null, predecessorIds: [SEED.tasks.root],
   },
   {
-    id: SEED.tasks.taskService, programId: SEED.programId, orgId: SEED.orgs.customer, title: SEED.titles.taskService,
-    status: 'TODO', estimateMinutes: 240, dueOn: '2026-10-06', internalNote: null,
-    assigneeId: null, predecessorIds: [SEED.tasks.design],
+    id: SEED.tasks.branchB, programId: SEED.programId, orgId: SEED_TASK_ORGS.branchB, title: SEED.titles.branchB,
+    status: 'TODO', estimateMinutes: null, dueOn: null, internalNote: null,
+    assigneeId: null, predecessorIds: [SEED.tasks.root],
   },
   {
-    id: SEED.tasks.integration, programId: SEED.programId, orgId: SEED.orgs.customer, title: SEED.titles.integration,
-    status: 'TODO', estimateMinutes: 180, dueOn: '2026-10-10', internalNote: null,
-    assigneeId: SEED.users.carol, predecessorIds: [SEED.tasks.auth, SEED.tasks.taskService],
+    id: SEED.tasks.join, programId: SEED.programId, orgId: SEED_TASK_ORGS.join, title: SEED.titles.join,
+    status: 'TODO', estimateMinutes: null, dueOn: null, internalNote: null,
+    assigneeId: null, predecessorIds: [SEED.tasks.branchA, SEED.tasks.branchB],
   },
   {
-    id: SEED.tasks.docs, programId: SEED.programId, orgId: SEED.orgs.customer, title: SEED.titles.docs,
-    status: 'DOING', estimateMinutes: 90, dueOn: '2026-10-12', internalNote: null,
-    assigneeId: SEED.users.bob, predecessorIds: [SEED.tasks.integration],
+    id: SEED.tasks.independent, programId: SEED.programId, orgId: SEED_TASK_ORGS.independent, title: SEED.titles.independent,
+    status: 'TODO', estimateMinutes: null, dueOn: null, internalNote: null,
+    assigneeId: null, predecessorIds: [],
   },
   {
-    id: SEED.tasks.sandbox, programId: SEED.programId, orgId: SEED.orgs.vendorA, title: SEED.titles.sandbox,
-    status: 'BLOCKED', estimateMinutes: 60, dueOn: null, internalNote: null,
-    assigneeId: SEED.users.bob, predecessorIds: [],
+    id: SEED.tasks.blocked, programId: SEED.programId, orgId: SEED_TASK_ORGS.blocked, title: SEED.titles.blocked,
+    status: 'BLOCKED', estimateMinutes: null, dueOn: null, internalNote: null,
+    assigneeId: null, predecessorIds: [],
   },
 ];
 
@@ -175,7 +178,7 @@ function makeTaskView(t: SeedTask) {
 function makeProgramView(programId: string) {
   return {
     id: programId,
-    name: 'Q4 Platform Rollout',
+    name: SEED.programName,
     tasks: (args: { status?: string }) => {
       let list = tasks.filter((t) => t.programId === programId);
       if (args?.status) list = list.filter((t) => t.status === args.status);

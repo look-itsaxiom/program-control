@@ -2,12 +2,17 @@
 //
 // An in-memory implementation of the phase 2 REST contract (see
 // phases/2-rest-api/STORIES.md), installed as globalThis.fetch so phase 3
-// tests can render the real App against a fake server instead of a live
-// Go process. Seeded to mirror the Go seedWorld: one customer org, two
-// vendor orgs, four users, a program shared to both vendors, and a program
-// of six tasks arranged in a diamond dependency shape plus a tail and an
-// independent task, with one internal note and one task owned by a vendor
-// (mixed owning orgs).
+// and phase 6 tests can render the real App against a fake server instead of
+// a live Go process.
+//
+// The seed is the same world api/phase_tests/seed_test.go builds, task for
+// task: one customer org owning the program, two vendor orgs it is shared
+// with (A as editor, B as viewer), four users (Alice, Bob and Carol in an org
+// each, Dave in none), and six tasks in a diamond (root before branchA and
+// branchB, both before join) plus two tasks outside it. Task ownership is
+// spread across all three organizations so the internal-note rule is
+// exercised on more than one owner. Keeping both fakes on one world means a
+// story means the same thing whether it is checked against Go or the browser.
 
 export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer';
 export type ShareRole = 'editor' | 'viewer';
@@ -73,24 +78,35 @@ export const SEED = {
     dave: 'user-dave',
   },
   programId: 'program-1',
+  programName: 'Engine Overhaul',
   emptyProgramId: 'program-empty',
   tasks: {
-    design: 'task-1',
-    auth: 'task-2',
-    taskService: 'task-3',
-    integration: 'task-4',
-    docs: 'task-5',
-    sandbox: 'task-6',
+    root: 'task-1',
+    branchA: 'task-2',
+    branchB: 'task-3',
+    join: 'task-4',
+    independent: 'task-5',
+    blocked: 'task-6',
   },
   titles: {
-    design: 'Design API contract',
-    auth: 'Build auth service',
-    taskService: 'Build task service',
-    integration: 'Integration tests',
-    docs: 'Write docs',
-    sandbox: 'Vendor sandbox setup',
+    root: 'Draft engine spec',
+    branchA: 'Machine the housing',
+    branchB: 'Cast the manifold',
+    join: 'Assemble and test',
+    independent: 'Order replacement gaskets',
+    blocked: 'Certify for export',
   },
-  internalNoteText: 'Confirm scope with legal before external share',
+  internalNoteText: 'Vendor B under-bid this contract; do not disclose the target margin.',
+} as const;
+
+/** The owning organization of each seeded task, mirroring seed_test.go. */
+export const SEED_TASK_ORGS = {
+  root: SEED.orgs.customer,
+  branchA: SEED.orgs.vendorA,
+  branchB: SEED.orgs.vendorB,
+  join: SEED.orgs.customer,
+  independent: SEED.orgs.vendorA,
+  blocked: SEED.orgs.customer,
 } as const;
 
 // --- Mutable state ------------------------------------------------------
@@ -110,7 +126,7 @@ function seedNow() {
     // dave is a stranger: no membership row at all.
   ]);
   programs = new Map([
-    [SEED.programId, { id: SEED.programId, orgId: SEED.orgs.customer, name: 'Q4 Platform Rollout' }],
+    [SEED.programId, { id: SEED.programId, orgId: SEED.orgs.customer, name: SEED.programName }],
     [SEED.emptyProgramId, { id: SEED.emptyProgramId, orgId: SEED.orgs.customer, name: 'Empty Pilot' }],
   ]);
   shares = new Map([
@@ -124,70 +140,55 @@ function seedNow() {
     [SEED.emptyProgramId, new Map()],
   ]);
 
-  const now = new Date().toISOString();
+  // Seeded tasks are created one minute apart, oldest first, so S2.2's
+  // created_at tiebreak is a real ordering rather than an accident of
+  // insertion order. seed_test.go spaces its rows the same way.
+  const base = Date.UTC(2026, 8, 1, 9, 0, 0);
+  let minute = 0;
   const t = (
     id: string,
     title: string,
     orgId: string,
     status: TaskStatus,
     opts: Partial<Pick<Task, 'assigneeId' | 'estimateMinutes' | 'dueOn' | 'internalNote'>> = {},
-  ): Task => ({
-    id,
-    programId: SEED.programId,
-    orgId,
-    title,
-    status,
-    estimateMinutes: opts.estimateMinutes ?? null,
-    assigneeId: opts.assigneeId ?? null,
-    dueOn: opts.dueOn ?? null,
-    internalNote: opts.internalNote ?? null,
-    createdAt: now,
-    updatedAt: now,
-  });
+  ): Task => {
+    const at = new Date(base + minute++ * 60_000).toISOString();
+    return {
+      id,
+      programId: SEED.programId,
+      orgId,
+      title,
+      status,
+      estimateMinutes: opts.estimateMinutes ?? null,
+      assigneeId: opts.assigneeId ?? null,
+      dueOn: opts.dueOn ?? null,
+      internalNote: opts.internalNote ?? null,
+      createdAt: at,
+      updatedAt: at,
+    };
+  };
 
   tasks = new Map(
     [
-      t(SEED.tasks.design, SEED.titles.design, SEED.orgs.customer, 'done', {
-        assigneeId: SEED.users.alice,
-        estimateMinutes: 120,
-        dueOn: '2026-10-01',
+      t(SEED.tasks.root, SEED.titles.root, SEED_TASK_ORGS.root, 'todo', {
         internalNote: SEED.internalNoteText,
       }),
-      t(SEED.tasks.auth, SEED.titles.auth, SEED.orgs.customer, 'todo', {
-        assigneeId: SEED.users.alice,
-        estimateMinutes: 300,
-        dueOn: '2026-10-05',
-      }),
-      t(SEED.tasks.taskService, SEED.titles.taskService, SEED.orgs.customer, 'todo', {
-        estimateMinutes: 240,
-        dueOn: '2026-10-06',
-      }),
-      t(SEED.tasks.integration, SEED.titles.integration, SEED.orgs.customer, 'todo', {
-        assigneeId: SEED.users.carol,
-        estimateMinutes: 180,
-        dueOn: '2026-10-10',
-      }),
-      t(SEED.tasks.docs, SEED.titles.docs, SEED.orgs.customer, 'doing', {
-        assigneeId: SEED.users.bob,
-        estimateMinutes: 90,
-        dueOn: '2026-10-12',
-      }),
-      t(SEED.tasks.sandbox, SEED.titles.sandbox, SEED.orgs.vendorA, 'blocked', {
-        assigneeId: SEED.users.bob,
-        estimateMinutes: 60,
-      }),
+      t(SEED.tasks.branchA, SEED.titles.branchA, SEED_TASK_ORGS.branchA, 'todo'),
+      t(SEED.tasks.branchB, SEED.titles.branchB, SEED_TASK_ORGS.branchB, 'todo'),
+      t(SEED.tasks.join, SEED.titles.join, SEED_TASK_ORGS.join, 'todo'),
+      t(SEED.tasks.independent, SEED.titles.independent, SEED_TASK_ORGS.independent, 'todo'),
+      t(SEED.tasks.blocked, SEED.titles.blocked, SEED_TASK_ORGS.blocked, 'blocked'),
     ].map((task) => [task.id, task]),
   );
 
-  // Diamond: design -> auth, design -> taskService, auth -> integration,
-  // taskService -> integration. Tail: integration -> docs. sandbox is
-  // independent (no predecessors, and no successors).
+  // The diamond: root -> branchA, root -> branchB, branchA -> join,
+  // branchB -> join. independent and blocked stand outside it entirely, with
+  // no predecessors and no successors.
   dependencies = [
-    { predecessorId: SEED.tasks.design, successorId: SEED.tasks.auth },
-    { predecessorId: SEED.tasks.design, successorId: SEED.tasks.taskService },
-    { predecessorId: SEED.tasks.auth, successorId: SEED.tasks.integration },
-    { predecessorId: SEED.tasks.taskService, successorId: SEED.tasks.integration },
-    { predecessorId: SEED.tasks.integration, successorId: SEED.tasks.docs },
+    { predecessorId: SEED.tasks.root, successorId: SEED.tasks.branchA },
+    { predecessorId: SEED.tasks.root, successorId: SEED.tasks.branchB },
+    { predecessorId: SEED.tasks.branchA, successorId: SEED.tasks.join },
+    { predecessorId: SEED.tasks.branchB, successorId: SEED.tasks.join },
   ];
 
   requestSeq = 0;
@@ -258,11 +259,60 @@ function canAccessProgram(callerOrgId: string | null, program: Program): boolean
   return shares.get(program.id)?.has(callerOrgId) ?? false;
 }
 
+// canSeeTask applies S2.8 to a single task: a caller who cannot reach the
+// task's program cannot tell the task exists either, so its routes answer 404
+// exactly as they would for an id nobody has ever used.
+function canSeeTask(callerOrgId: string | null, task: Task): boolean {
+  const program = programs.get(task.programId);
+  if (!program) return false;
+  return canAccessProgram(callerOrgId, program);
+}
+
+// isCalendarDate accepts only a real YYYY-MM-DD date: the shape has to match
+// and the parsed value has to round-trip, so "2026-02-30" is rejected rather
+// than silently rolled forward the way Date's own parser would.
+function isCalendarDate(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+}
+
 // --- Route handling ---------------------------------------------------
 
 interface HandlerResult {
   status: number;
   body: unknown;
+  headers?: Record<string, string>;
+}
+
+// Every route this phase defines, with the methods that route accepts. A
+// request whose path matches one of these but whose method is not in its list
+// is S2.7's 405 with an Allow header, not a 404.
+const ROUTES: { pattern: RegExp; methods: string[] }[] = [
+  { pattern: /^\/programs\/[^/]+\/tasks\/ready$/, methods: ['GET'] },
+  { pattern: /^\/programs\/[^/]+\/tasks$/, methods: ['GET', 'POST'] },
+  { pattern: /^\/tasks\/[^/]+\/dependencies$/, methods: ['POST'] },
+  { pattern: /^\/tasks\/[^/]+\/dependencies\/[^/]+$/, methods: ['DELETE'] },
+  { pattern: /^\/tasks\/[^/]+$/, methods: ['GET', 'PATCH'] },
+];
+
+/** The Allow header value for a known path called with a method it does not accept, else null. */
+function methodNotAllowed(method: string, pathWithoutQuery: string): string | null {
+  for (const route of ROUTES) {
+    if (route.pattern.test(pathWithoutQuery) && !route.methods.includes(method)) {
+      return route.methods.join(', ');
+    }
+  }
+  return null;
 }
 
 function handle(method: string, path: string, userId: string | null, body: unknown): HandlerResult {
@@ -272,6 +322,16 @@ function handle(method: string, path: string, userId: string | null, body: unkno
     return { status: 401, body: errorBody('unauthenticated', 'missing or unknown X-User-Id') };
   }
   const callerOrgId = callerOrgFor(userId);
+  const pathWithoutQuery = path.split('?')[0] ?? path;
+
+  const allow = methodNotAllowed(method, pathWithoutQuery);
+  if (allow !== null) {
+    return {
+      status: 405,
+      body: errorBody('method_not_allowed', `${method} is not allowed on ${pathWithoutQuery}`),
+      headers: { Allow: allow },
+    };
+  }
 
   let m: RegExpMatchArray | null;
 
@@ -313,14 +373,17 @@ function handle(method: string, path: string, userId: string | null, body: unkno
     const b = (body ?? {}) as Record<string, unknown>;
     const details: { field: string; message: string }[] = [];
     const title = typeof b.title === 'string' ? b.title.trim() : '';
-    if (title.length < 1 || title.length > 200) {
-      details.push({ field: 'title', message: 'must be between 1 and 200 characters' });
+    if (title.length < 1) {
+      details.push({ field: 'title', message: 'must not be empty or whitespace-only' });
     }
     if (b.estimateMinutes !== undefined && b.estimateMinutes !== null) {
       const est = Number(b.estimateMinutes);
       if (!Number.isFinite(est) || est < 0) {
         details.push({ field: 'estimateMinutes', message: 'must not be negative' });
       }
+    }
+    if (b.dueOn !== undefined && b.dueOn !== null && !isCalendarDate(b.dueOn)) {
+      details.push({ field: 'dueOn', message: 'must be a YYYY-MM-DD calendar date' });
     }
     if (details.length > 0) {
       return { status: 400, body: { error: { code: 'validation', message: 'invalid task', details } } };
@@ -345,18 +408,26 @@ function handle(method: string, path: string, userId: string | null, body: unkno
       updatedAt: now,
     };
     tasks.set(id, created);
-    return { status: 201, body: taskJson(created, callerOrgId) };
+    return {
+      status: 201,
+      body: taskJson(created, callerOrgId),
+      headers: { Location: `/tasks/${id}` },
+    };
   }
 
   // POST /tasks/{id}/dependencies
   if ((m = path.match(/^\/tasks\/([^/]+)\/dependencies$/)) && method === 'POST') {
     const successorId = m[1]!;
     const successor = tasks.get(successorId);
-    if (!successor) return { status: 404, body: errorBody('not_found', 'task not found') };
+    if (!successor || !canSeeTask(callerOrgId, successor)) {
+      return { status: 404, body: errorBody('not_found', 'task not found') };
+    }
     const b = (body ?? {}) as Record<string, unknown>;
     const predecessorId = String(b.predecessorId ?? '');
     const predecessor = tasks.get(predecessorId);
-    if (!predecessor) return { status: 404, body: errorBody('not_found', 'predecessor not found') };
+    if (!predecessor || !canSeeTask(callerOrgId, predecessor)) {
+      return { status: 404, body: errorBody('not_found', 'predecessor not found') };
+    }
     if (predecessorId === successorId) {
       return {
         status: 409,
@@ -398,7 +469,9 @@ function handle(method: string, path: string, userId: string | null, body: unkno
   // PATCH /tasks/{id}
   if ((m = path.match(/^\/tasks\/([^/]+)$/)) && method === 'PATCH') {
     const task = tasks.get(m[1]!);
-    if (!task) return { status: 404, body: errorBody('not_found', 'task not found') };
+    if (!task || !canSeeTask(callerOrgId, task)) {
+      return { status: 404, body: errorBody('not_found', 'task not found') };
+    }
     const b = (body ?? {}) as Record<string, unknown>;
     const status = b.status as TaskStatus;
     const allowed: TaskStatus[] = ['todo', 'doing', 'blocked', 'done'];
@@ -422,7 +495,9 @@ function handle(method: string, path: string, userId: string | null, body: unkno
   // GET /tasks/{id}
   if ((m = path.match(/^\/tasks\/([^/]+)$/)) && method === 'GET') {
     const task = tasks.get(m[1]!);
-    if (!task) return { status: 404, body: errorBody('not_found', 'task not found') };
+    if (!task || !canSeeTask(callerOrgId, task)) {
+      return { status: 404, body: errorBody('not_found', 'task not found') };
+    }
     return { status: 200, body: taskJson(task, callerOrgId) };
   }
 
@@ -486,7 +561,11 @@ async function fakeFetchImpl(input: RequestInfo | URL, init?: RequestInit): Prom
   const result = handle(method, path, userId, parsedBody);
   return new Response(result.body === null ? null : JSON.stringify(result.body), {
     status: result.status,
-    headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Request-Id': requestId,
+      ...(result.headers ?? {}),
+    },
   });
 }
 
