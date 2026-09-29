@@ -40,6 +40,17 @@ function pgReady() {
   return result.status === 0;
 }
 
+// Drop and recreate the database so a reset never inherits a schema from another branch (goose's own
+// reset only walks back migrations it knows about; a table created by a migration file that is not in
+// this checkout would survive it and make later phases look green).
+function recreateDatabase() {
+  const psql = (sql) => spawnSync('docker', ['compose', 'exec', '-T', 'db', 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', sql], { stdio: 'inherit' });
+  const drop = psql('drop database if exists program_control with (force)');
+  if (drop.status !== 0) process.exit(drop.status ?? 1);
+  const create = psql('create database program_control');
+  if (create.status !== 0) process.exit(create.status ?? 1);
+}
+
 function requireApi() {
   if (!existsSync('api')) {
     console.log(
@@ -75,7 +86,9 @@ switch (command) {
     runMigrate(['status']);
     break;
   case 'reset':
-    if (runMigrate(['reset'])) composeUp();
+    composeUp();
+    recreateDatabase();
+    runMigrate(['up']);
     break;
   case 'ensure':
     if (!pgReady()) {
