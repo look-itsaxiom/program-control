@@ -1,5 +1,5 @@
-// Package httpapi is your REST layer. This file is a stub: it compiles and serves a health check,
-// but every other route answers 501 until you build it.
+// Package httpapi is the REST layer: routing, authentication, the shared JSON error envelope,
+// and the translation between HTTP and the store's domain types. No SQL lives here.
 package httpapi
 
 import (
@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/look-itsaxiom/program-control/api/internal/store"
 )
 
 // Config configures the HTTP API.
@@ -21,20 +23,106 @@ type Config struct {
 	QueryTracer pgx.QueryTracer
 }
 
-// NewHandler returns the HTTP API. This stub answers every route with 501 until you build it.
+// server holds everything the handlers share. There are no package-level variables: a test can
+// build as many independent handlers as it likes.
+type server struct {
+	store *store.Store
+	log   *slog.Logger
+}
+
+// NewHandler opens the store, wires the routes, and returns the API. The pool it owns is closed
+// when ctx is done, so a caller that cancels its context leaks nothing.
 func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
+	log := cfg.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+
+	st, err := store.New(ctx, cfg.DatabaseURL, cfg.QueryTracer)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		<-ctx.Done()
+		st.Close()
+	}()
+
+	s := &server{store: st, log: log}
+	return s.routes(), nil
+}
+
+func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		writeJSON(w, s.log, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		_, _ = w.Write([]byte(`{"error":{"code":"not_implemented","message":"build me"}}`))
-	})
+	mux.HandleFunc("GET /programs/{programId}/tasks", s.authenticate(s.listTasks))
+	mux.HandleFunc("POST /programs/{programId}/tasks", s.authenticate(s.createTask))
+	mux.HandleFunc("GET /programs/{programId}/tasks/ready", s.authenticate(s.listReadyTasks))
 
-	return mux, nil
+	mux.HandleFunc("GET /tasks/{id}", s.authenticate(s.getTask))
+	mux.HandleFunc("PATCH /tasks/{id}", s.authenticate(s.patchTask))
+
+	mux.HandleFunc("POST /tasks/{id}/dependencies", s.authenticate(s.addDependency))
+	mux.HandleFunc("DELETE /tasks/{id}/dependencies/{predecessorId}", s.authenticate(s.removeDependency))
+
+	return withRequestID(s.recoverPanics(s.envelopeMuxErrors(mux)))
+}
+
+// envelopeMuxErrors rewrites the two responses ServeMux produces by itself, a 404 for a path no
+// route claims and a 405 for a route called with a method it does not accept, into the same JSON
+// envelope every handler here uses. It leaves a handler's own 404 alone, recognizing it by the
+// Content-Type the handler has already set.
+//
+// Registering a catch-all "/" route instead would not work: it would match every method on every
+// path, so ServeMux would never report a method mismatch and the 405 would be lost.
+func (s *server) envelopeMuxErrors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		iw := &envelopingWriter{ResponseWriter: w}
+		next.ServeHTTP(iw, r)
+
+		switch iw.intercepted {
+		case http.StatusNotFound:
+			writeError(w, s.log, http.StatusNotFound, codeNotFound, "no route matches "+r.URL.Path)
+		case http.StatusMethodNotAllowed:
+			writeError(w, s.log, http.StatusMethodNotAllowed, codeMethod,
+				r.Method+" is not accepted here; see the Allow header")
+		}
+	})
+}
+
+// envelopingWriter swallows a bare 404 or 405 and its plain-text body so the wrapper above can
+// answer with the JSON envelope instead. Anything a handler wrote itself, which it marks by
+// setting Content-Type, passes straight through.
+type envelopingWriter struct {
+	http.ResponseWriter
+	intercepted int
+}
+
+func (w *envelopingWriter) WriteHeader(status int) {
+	isMuxError := status == http.StatusNotFound || status == http.StatusMethodNotAllowed
+	if isMuxError && w.Header().Get("Content-Type") != "application/json" {
+		w.intercepted = status
+		return
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *envelopingWriter) Write(b []byte) (int, error) {
+	if w.intercepted != 0 {
+		return len(b), nil
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+// fail logs an unexpected error with its request id and answers 500 without echoing the error to
+// the caller, who has no use for it and should not learn about the database from it.
+func (s *server) fail(w http.ResponseWriter, r *http.Request, what string, err error) {
+	s.log.Error(what,
+		"error", err, "method", r.Method, "path", r.URL.Path,
+		"request_id", requestIDFrom(r.Context()))
+	writeError(w, s.log, http.StatusInternalServerError, codeInternal,
+		"the server failed to handle this request")
 }
