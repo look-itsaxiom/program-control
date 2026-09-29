@@ -228,7 +228,7 @@ func (s *server) patchTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.store.SetTaskStatus(r.Context(), task.ID, *req.Status, caller.ID)
+	updated, change, err := s.store.SetTaskStatus(r.Context(), task.ID, *req.Status, caller.ID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.notFound(w)
@@ -238,6 +238,7 @@ func (s *server) patchTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, s.log, http.StatusOK, newTaskPayload(updated, caller))
+	s.notifier.Notify(change)
 }
 
 // --- shared route plumbing -------------------------------------------------

@@ -26,13 +26,20 @@ func (r *mutationResolver) SetTaskStatus(ctx context.Context, taskID string, sta
 		return nil, err
 	}
 
-	if _, err := r.Store.SetTaskStatus(ctx, taskID, status.StoreStatus(), caller.ID); err != nil {
+	_, change, err := r.Store.SetTaskStatus(ctx, taskID, status.StoreStatus(), caller.ID)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, Errorf(ctx, CodeNotFound, "no such task")
 		}
 		return nil, r.internal(ctx, "set task status", err)
 	}
-	return r.reloadTask(ctx, caller, taskID)
+
+	updated, err := r.reloadTask(ctx, caller, taskID)
+	if err != nil {
+		return nil, err
+	}
+	r.Notifier.Notify(change)
+	return updated, nil
 }
 
 // AddDependency is the resolver for the addDependency field.

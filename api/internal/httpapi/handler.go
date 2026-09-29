@@ -6,9 +6,11 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/look-itsaxiom/program-control/api/internal/notify"
 	"github.com/look-itsaxiom/program-control/api/internal/store"
 )
 
@@ -26,8 +28,10 @@ type Config struct {
 // server holds everything the handlers share. There are no package-level variables: a test can
 // build as many independent handlers as it likes.
 type server struct {
-	store *store.Store
-	log   *slog.Logger
+	store    *store.Store
+	log      *slog.Logger
+	notifier *notify.Notifier
+	secrets  webhookSecrets
 }
 
 // NewHandler opens the store, wires the routes, and returns the API. The pool it owns is closed
@@ -47,7 +51,18 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		st.Close()
 	}()
 
-	s := &server{store: st, log: log}
+	notifier := notify.New(os.Getenv("WEBHOOK_NOTIFY_URL"), log)
+	notifier.Start(ctx)
+
+	s := &server{
+		store:    st,
+		log:      log,
+		notifier: notifier,
+		secrets: webhookSecrets{
+			current:  os.Getenv("WEBHOOK_SECRET"),
+			previous: os.Getenv("WEBHOOK_SECRET_PREVIOUS"),
+		},
+	}
 	return s.routes(), nil
 }
 
@@ -67,6 +82,8 @@ func (s *server) routes() http.Handler {
 
 	mux.HandleFunc("POST /tasks/{id}/dependencies", s.authenticate(s.addDependency))
 	mux.HandleFunc("DELETE /tasks/{id}/dependencies/{predecessorId}", s.authenticate(s.removeDependency))
+
+	mux.HandleFunc("POST /webhooks/vendor", s.receiveVendorWebhook)
 
 	mux.Handle("POST /graphql", s.graphqlHandler())
 

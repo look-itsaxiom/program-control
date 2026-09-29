@@ -162,38 +162,72 @@ func (s *Store) CreateTask(ctx context.Context, in NewTask) (Task, error) {
 	return t, nil
 }
 
-// SetTaskStatus moves a task to status and appends the matching audit event, both or neither.
-// It returns the task as it now stands.
-func (s *Store) SetTaskStatus(ctx context.Context, id, status, actorID string) (Task, error) {
+// StatusChange is what one status transition amounted to: everything a downstream system needs
+// to be told about it, and nothing about who asked.
+type StatusChange struct {
+	TaskID     string
+	FromStatus string
+	ToStatus   string
+	Kind       string
+	OccurredAt time.Time
+}
+
+// SetTaskStatus moves a task to status on behalf of a person, appending a "status_changed" event.
+func (s *Store) SetTaskStatus(ctx context.Context, id, status, actorID string) (Task, StatusChange, error) {
+	return s.ChangeTaskStatus(ctx, id, status, "status_changed", &actorID)
+}
+
+// ChangeTaskStatus moves a task to status and appends the matching audit event, both or neither.
+// kind names what drove the change and actorID names the person behind it, which is nil when
+// nobody was: a webhook is a system talking to a system.
+func (s *Store) ChangeTaskStatus(ctx context.Context, id, status, kind string, actorID *string) (Task, StatusChange, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return Task{}, fmt.Errorf("begin status change: %w", err)
+		return Task{}, StatusChange{}, fmt.Errorf("begin status change: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	updated, change, err := changeStatusTx(ctx, tx, id, status, kind, actorID)
+	if err != nil {
+		return Task{}, StatusChange{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Task{}, StatusChange{}, fmt.Errorf("commit status change: %w", err)
+	}
+	return updated, change, nil
+}
+
+// changeStatusTx is the body of a status change, inside whatever transaction the caller opened,
+// so a webhook can record its message id and the change it caused as one atomic step.
+func changeStatusTx(ctx context.Context, tx pgx.Tx, id, status, kind string, actorID *string) (Task, StatusChange, error) {
 	var from string
-	err = tx.QueryRow(ctx,
+	err := tx.QueryRow(ctx,
 		`select status from tasks where id = $1 and deleted_at is null for update`, id).Scan(&from)
 	if err != nil {
-		return Task{}, notFound(err, "lock task for status change")
+		return Task{}, StatusChange{}, notFound(err, "lock task for status change")
 	}
 
 	q := `update tasks t set status = $2 where t.id = $1 returning ` + taskColumns
 	updated, err := scanTask(tx.QueryRow(ctx, q, id, status))
 	if err != nil {
-		return Task{}, fmt.Errorf("update task status: %w", err)
+		return Task{}, StatusChange{}, fmt.Errorf("update task status: %w", err)
 	}
 
-	_, err = tx.Exec(ctx, `
+	var occurredAt time.Time
+	err = tx.QueryRow(ctx, `
 		insert into task_events (task_id, actor_id, kind, from_status, to_status)
-		values ($1, $2, 'status_changed', $3, $4)
-	`, id, actorID, from, status)
+		values ($1, $2, $3, $4, $5)
+		returning created_at
+	`, id, actorID, kind, from, status).Scan(&occurredAt)
 	if err != nil {
-		return Task{}, fmt.Errorf("append status_changed event: %w", err)
+		return Task{}, StatusChange{}, fmt.Errorf("append %s event: %w", kind, err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return Task{}, fmt.Errorf("commit status change: %w", err)
-	}
-	return updated, nil
+	return updated, StatusChange{
+		TaskID:     id,
+		FromStatus: from,
+		ToStatus:   status,
+		Kind:       kind,
+		OccurredAt: occurredAt,
+	}, nil
 }
