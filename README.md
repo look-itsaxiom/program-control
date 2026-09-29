@@ -86,8 +86,11 @@ actually claiming. It will read your code and run the phase tests when that help
 What it will not do: write, paste, or edit implementation code under `api/internal`,
 `api/migrations`, `api/cmd`, `api/phase_tests`, or `web/src`; state the answer to a story; hand
 you a hint you did not ask for; or look at the `solutions` branch. `.claude/settings.json` denies
-the file tools on those paths, so the mentor cannot slip even if you talk it into trying. That is
-the whole point: you are building this so you can answer questions about it later.
+the file tools on those paths as a second line of defence behind that instruction, and a mentor
+asked to edit one of them has been observed trying and being refused by the permission system
+(`docs/mentor-validation.md`, "Guard exercised"). Treat it as a backstop rather than a proof: it
+covers the file tools by path, not every route a determined prompt could take. That is the whole
+point of the exercise anyway: you are building this so you can answer questions about it later.
 
 The first time you run `claude` here it asks whether you trust this folder. Say yes, or it will
 keep asking permission every time it wants to run `pnpm check` for you.
