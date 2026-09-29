@@ -45,9 +45,9 @@ value to a check constraint's list: it cannot be done inside the same transactio
 and older Postgres versions could not remove a value at all. A text column with a check constraint
 is less elegant to look at, but changing the allowed set later is a one-line, ordinary migration,
 and every layer above the database (Go, JSON, GraphQL) already treats it as a plain string with no
-extra mapping step. This project favors the constraint-on-text approach for exactly that reason:
-the set of task statuses and membership roles here is a business decision that is more likely to
-change than the shape of the tables around it.
+extra mapping step. The choice comes down to how likely the allowed set is to change: a value set
+that is closer to a business decision than a structural fact about the data tends to age better as
+a check constraint than as a type.
 
 ## Migrations as code, and why they must be re-runnable
 

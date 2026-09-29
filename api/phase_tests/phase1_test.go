@@ -327,6 +327,26 @@ func TestPhase1_ProgramNameUniquePerOrganization(t *testing.T) {
 	}
 }
 
+func TestPhase1_ProgramNameReusableAfterSoftDelete(t *testing.T) {
+	phaseGate(t, 1)
+	pool := testdb.Open(t)
+
+	customer := insertOrg(t, pool, "Customer Co")
+	original := insertProgram(t, pool, customer, "Engine Test")
+
+	if _, err := pool.Exec(t.Context(), `update programs set deleted_at = $1 where id = $2`, time.Now(), original); err != nil {
+		t.Fatalf("fixture: soft-delete program: %v", err)
+	}
+
+	if err := tryInsertProgram(t, pool, customer, "Engine Test"); err != nil {
+		t.Fatalf("S1.2: reusing the name \"Engine Test\" after the original program was soft-deleted should have been accepted: %v", err)
+	}
+
+	if err := tryInsertProgram(t, pool, customer, "Engine Test"); err == nil {
+		t.Fatal("S1.2: a second active program named \"Engine Test\" in the same organization should have been refused, even though the name was already reused once after a soft delete")
+	}
+}
+
 func TestPhase1_ProgramShareAcceptsValidRoles(t *testing.T) {
 	phaseGate(t, 1)
 	pool := testdb.Open(t)
@@ -396,6 +416,30 @@ func TestPhase1_OrganizationDeleteRestrictedWhileOwningPrograms(t *testing.T) {
 
 	if _, err := pool.Exec(t.Context(), `delete from organizations where id = $1`, customer); err == nil {
 		t.Fatal("S1.2: deleting an organization that still owns a program should have been refused")
+	}
+}
+
+func TestPhase1_OrganizationDeleteRemovesShares(t *testing.T) {
+	phaseGate(t, 1)
+	pool := testdb.Open(t)
+
+	customer := insertOrg(t, pool, "Customer Co")
+	vendor := insertOrg(t, pool, "Vendor Co")
+	program := insertProgram(t, pool, customer, "Campaign")
+	if err := tryInsertProgramShare(t, pool, program, vendor, "viewer"); err != nil {
+		t.Fatalf("fixture: insert program share: %v", err)
+	}
+
+	if _, err := pool.Exec(t.Context(), `delete from organizations where id = $1`, vendor); err != nil {
+		t.Fatalf("S1.2: deleting an organization that only appears as a share recipient, not an owner, should have been accepted: %v", err)
+	}
+
+	var count int
+	if err := pool.QueryRow(t.Context(), `select count(*) from program_shares where org_id = $1`, vendor).Scan(&count); err != nil {
+		t.Fatalf("count program_shares: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("S1.2: deleting an organization should remove the program_shares rows it appears in; %d remain", count)
 	}
 }
 

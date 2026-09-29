@@ -10,7 +10,7 @@ only after the learner has tried the step themselves.
 2. If `go` reports "too old" instead of missing, re-read the doctor script's own note about which
    Go versions are hard failures versus which ones just download a newer toolchain automatically.
    For the concept behind why a package manager pins exact versions in a lockfile, see course
-   lesson 35, "package managers."
+   lesson `35-package-managers/01-what-a-package-manager-does`.
 3. Windows PATH updates from an installer only take effect in new terminal windows: the shape of
    the fix is "close every open terminal (and VS Code, if its integrated terminal is one of them)
    and open a fresh one," not reinstalling the tool. On Windows, if the failure is specifically
@@ -36,9 +36,9 @@ only after the learner has tried the step themselves.
 
 1. Have you opened `README.md`'s "Layout" section yet? What does it say lives under `api/` versus
    `phases/`?
-2. Course lesson 109, section "01-migrations-as-code," describes what a migration file is and
-   where a project like this one typically keeps them, if you want the general concept before you
-   go looking at this specific repo's folder.
+2. Course lesson `109-migrations-and-schema-evolution/01-migrations-as-code` describes what a
+   migration file is and where a project like this one typically keeps them, if you want the
+   general concept before you go looking at this specific repo's folder.
 3. There is no code shape to describe here; this story is a reading exercise, not a build one.
 
 ## S0.4: meet the mentor

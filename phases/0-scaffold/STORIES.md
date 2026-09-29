@@ -9,14 +9,14 @@ the project depends on, so that I can run it at all.
 
 Install, in whatever order suits you:
 
-- **Git** — https://git-scm.com/downloads
-- **Go** — https://go.dev/dl/
-- **Node** — https://nodejs.org/ (then enable pnpm: run `corepack enable`, or if that is not
+- **Git**: https://git-scm.com/downloads
+- **Go**: https://go.dev/dl/
+- **Node**: https://nodejs.org/ (then enable pnpm: run `corepack enable`, or if that is not
   available on your Node install, use the standalone installer at https://pnpm.io/installation)
-- **Docker Desktop** — https://www.docker.com/products/docker-desktop/
-- **GitHub CLI** — https://cli.github.com/
-- **An editor** — https://code.visualstudio.com/ or any editor you already use
-- **Claude Code** — https://docs.claude.com/en/docs/claude-code/overview
+- **Docker Desktop**: https://www.docker.com/products/docker-desktop/
+- **GitHub CLI**: https://cli.github.com/
+- **An editor**: https://code.visualstudio.com/ or any editor you already use
+- **Claude Code**: https://docs.claude.com/en/docs/claude-code/overview
 
 After installing anything that changes your `PATH` (Git, Go, Node, `gh`), close your terminal
 and open a new one before checking again. A terminal that was already open when you installed a
@@ -49,7 +49,8 @@ that I know the machine, not just the tools, works.
 **Acceptance:**
 
 - `pnpm setup` completes without error.
-- `pnpm dev` serves `http://localhost:8080/healthz` and the web app's placeholder page.
+- `pnpm dev` serves the API health check at `http://localhost:8080/healthz` and the web app's
+  placeholder page at the URL Vite prints, normally `http://localhost:5173`.
 - `pnpm check 0` reports every phase 0 test passing.
 
 ## S0.3: orientation

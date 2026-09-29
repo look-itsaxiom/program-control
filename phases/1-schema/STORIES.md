@@ -21,7 +21,8 @@ as a member of the same organization twice.
 **Contract:**
 
 - `organizations` has an `id` (a UUID, and the table's primary key), a `name` (text, required,
-  and unique across every organization in the system), and a `created_at` timestamp (required).
+  and unique across every organization in the system), and a `created_at` timestamp with time
+  zone (required).
 - `users` has an `id` (a UUID, primary key), an `email` (text, required, unique across every
   user), and a `display_name` (text, required).
 - `memberships` links one `users.id` to one `org_id` referencing `organizations.id`, together with
@@ -37,19 +38,22 @@ into without owning it.
 
 **Acceptance:** a program has exactly one owning organization and a name; two active programs
 owned by the same organization cannot share a name, but two different organizations may each have
-a program with the same name. A program can be shared with another organization at a role of
+a program with the same name, and a name freed up by soft-deleting a program can be reused by a
+new one in the same organization. A program can be shared with another organization at a role of
 either editor or viewer; sharing at any other role is refused. Deleting a program removes its
 shares along with it, and (see S1.3) the tasks that belonged to it. An organization that still
 owns at least one program cannot itself be deleted; the attempt is refused, not silently ignored.
+An organization that owns no programs can be deleted even if it is still on the sharing side of
+someone else's program, and deleting it removes those share rows.
 
 **Contract:**
 
 - `programs` has an `id` (UUID, primary key), an `org_id` referencing `organizations.id` (the
   owning organization; an organization cannot be deleted while it still owns a program), a `name`
-  (text, required), `created_at` and `updated_at` timestamps (required; see S1.7 for how
-  `updated_at` behaves), and a `deleted_at` timestamp that is empty unless the program has been
-  soft-deleted. A program's name is unique among the still-active programs owned by the same
-  organization, not across the whole table.
+  (text, required), `created_at` and `updated_at` timestamps with time zone (both required; see
+  S1.7 for how `updated_at` behaves), and a `deleted_at` timestamp with time zone that is empty
+  unless the program has been soft-deleted. A program's name is unique among the still-active
+  programs owned by the same organization, not across the whole table.
 - `program_shares` links one `program_id` referencing `programs.id` to one `org_id` referencing
   `organizations.id`, together with a `role` (text, required, one of exactly `editor` or
   `viewer`). The pair of program and organization is the table's primary key. Deleting a program
@@ -82,8 +86,9 @@ interacts with title uniqueness).
   given), an `estimate_minutes` (integer, optional, never negative when present), an
   `assignee_id` referencing `users.id` (optional; if the referenced person is removed, this
   becomes empty rather than blocking the removal), a `due_on` date (optional), an `internal_note`
-  (text, optional), `created_at` and `updated_at` timestamps (required; see S1.7), and a
-  `deleted_at` timestamp that is empty unless the task has been soft-deleted.
+  (text, optional), `created_at` and `updated_at` timestamps with time zone (both required; see
+  S1.7), and a `deleted_at` timestamp with time zone that is empty unless the task has been
+  soft-deleted.
 
 ## S1.4: dependencies between tasks
 
@@ -115,11 +120,11 @@ it.
 
 **Contract:**
 
-- `task_events` has an `id` (a number, primary key, assigned automatically and increasing with
-  each new event, never supplied by the caller), a `task_id` referencing `tasks.id` (deleting the
-  task removes its events), an `actor_id` referencing `users.id` (optional), a `kind` (text,
+- `task_events` has an `id` (a 64-bit integer, primary key, assigned automatically and increasing
+  with each new event, never supplied by the caller), a `task_id` referencing `tasks.id` (deleting
+  the task removes its events), an `actor_id` referencing `users.id` (optional), a `kind` (text,
   required), a `from_status` (text, optional), a `to_status` (text, optional), and a `created_at`
-  timestamp (required).
+  timestamp with time zone (required).
 
 ## S1.6: the database refuses bad data
 
@@ -173,8 +178,9 @@ this shape of query), not the mechanism.
 
 ## Migrations
 
-Every table and rule above is delivered as goose migration files under `api/migrations`, numbered
-starting at `0002` (`0001` is the provided bootstrap migration; do not renumber or edit it). They
-are applied with `pnpm db:migrate`, checked with `pnpm db:status`, and must apply cleanly to a
-completely empty database and be re-runnable from scratch with `pnpm db:reset`. Do not call the
-underlying migration tool directly; always go through these `pnpm` scripts.
+**Contract:** every table and rule above is delivered as goose migration files under
+`api/migrations`, numbered starting at `0002` (`0001` is the provided bootstrap migration; do not
+renumber or edit it). They are applied with `pnpm db:migrate`, checked with `pnpm db:status`, and
+must apply cleanly to a completely empty database and be re-runnable from scratch with
+`pnpm db:reset`. Do not call the underlying migration tool directly; always go through these
+`pnpm` scripts.
