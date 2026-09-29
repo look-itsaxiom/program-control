@@ -1,8 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import App from '../App';
-import { phaseGate, rowFor, setStatus } from './helpers';
+import { findTitle, phaseGate, rowFor, setStatus } from './helpers';
 import {
   installFakeGraphql,
   uninstallFakeGraphql,
@@ -46,7 +46,7 @@ describe('phase 4 apollo', () => {
   it('S4.5: renders the board through GraphQL, not REST, when the transport is graphql', async () => {
     render(<App />);
 
-    expect(await screen.findByText(SEED.titles.root)).toBeInTheDocument();
+    expect(await findTitle(SEED.titles.root)).toBeInTheDocument();
     expect(operations.some((op) => /\bprogram\s*\(/.test(op.query))).toBe(true);
     // fake-graphql only answers /graphql; anything that fell through to a REST-style call would
     // show up here instead of as a recorded GraphQL operation.
@@ -56,7 +56,7 @@ describe('phase 4 apollo', () => {
   it('S4.3: toggling status sends the mutation and updates the row without an extra program query', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText(SEED.titles.branchA);
+    await findTitle(SEED.titles.branchA);
 
     const before = programQueryCount();
     expect(before).toBeGreaterThan(0);
@@ -71,7 +71,7 @@ describe('phase 4 apollo', () => {
   it('S4.5: cache normalization keeps a downstream task\'s Ready badge in sync without a refetch', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText(SEED.titles.join);
+    await findTitle(SEED.titles.join);
 
     // join depends on both branchA and branchB; neither is done yet, so it starts not ready.
     // Finishing both, one mutation at a time, should flip its Ready badge on live, purely from
@@ -90,10 +90,12 @@ describe('phase 4 apollo', () => {
   it('S4.6: a GraphQL error surfaces in the live region', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText(SEED.titles.root);
+    await findTitle(SEED.titles.root);
 
     // root is already a transitive predecessor of join (root -> branchA -> join); adding join as
     // a predecessor of root would close that loop.
+    // The dependency is picked by the `option` role scoped inside the picker for this row, never
+    // by a document-wide text search: the title it carries is also the title of another row.
     const row = rowFor(SEED.titles.root);
     const dependencyEditor = within(row).getByLabelText(`Add dependency to ${SEED.titles.root}`);
     const option = within(dependencyEditor).getByRole('option', { name: SEED.titles.join });

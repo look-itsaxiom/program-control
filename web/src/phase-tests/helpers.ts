@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import type userEvent from '@testing-library/user-event';
 import { describe } from 'vitest';
 
@@ -34,9 +34,35 @@ export function rowsInOrder(): HTMLElement[] {
   return screen.getAllByRole('row').slice(1); // drop the header row
 }
 
-/** The row containing the given task title. Throws, naming the title, if there is none. */
+// A task title is not unique in the document, and no phase test may assume it is. Phase 4's S4.6
+// reaches a dependency by the accessible name of its `option`, which the phase 3 contract lets a
+// board put in every row's dependency picker, so "Assemble and test" is on screen once as a row
+// and five more times as an option. A plain getByText(title) therefore finds six elements and
+// throws, and a row lookup that merely asks "does this row contain the text" picks whichever row
+// offers the title first rather than the row that *is* the task.
+//
+// titleNodes reads only the places the board shows a task, skipping options, which is what every
+// caller actually meant.
+
+/** Elements showing `title` as board content, ignoring picker options carrying the same name. */
+export function titleNodes(title: string, scope?: HTMLElement): HTMLElement[] {
+  const area = scope ? within(scope) : screen;
+  const options = new Set<Element>(area.queryAllByRole('option', { hidden: true }));
+  return area.queryAllByText(title).filter((el) => !options.has(el));
+}
+
+/** Waits for the board to show `title` and returns the element showing it. */
+export function findTitle(title: string, scope?: HTMLElement): Promise<HTMLElement> {
+  return waitFor(() => {
+    const [first] = titleNodes(title, scope);
+    if (!first) throw new Error(`the board is not showing "${title}" yet`);
+    return first;
+  });
+}
+
+/** The row whose own title is `title`. Throws, naming the title, if there is none. */
 export function rowFor(title: string): HTMLElement {
-  const row = screen.getAllByRole('row').find((r) => within(r).queryByText(title));
+  const row = screen.getAllByRole('row').find((r) => titleNodes(title, r).length > 0);
   if (!row) throw new Error(`no row found for "${title}"`);
   return row;
 }

@@ -2,7 +2,7 @@ import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it } from 'vitest';
 import App from '../App';
-import { phaseGate, rowFor, rowsInOrder, setStatus, statusOf } from './helpers';
+import { findTitle, phaseGate, rowFor, rowsInOrder, setStatus, statusOf, titleNodes } from './helpers';
 import { installFakeApi, SEED, type FakeApiControls } from './fake-api';
 
 const describe = phaseGate(3);
@@ -15,9 +15,10 @@ function goToProgram(programId: string, userId: string) {
 }
 
 // titleOfRow names the task a row is showing, used to assert the board's order
-// without depending on which column the title happens to live in.
+// without depending on which column the title happens to live in. It asks titleNodes rather than
+// the row's raw text, because a row's dependency picker may offer every other task by title.
 function titleOfRow(row: HTMLElement): string {
-  const found = Object.values(SEED.titles).find((title) => within(row).queryByText(title));
+  const found = Object.values(SEED.titles).find((title) => titleNodes(title, row).length > 0);
   if (!found) throw new Error('row does not contain a known task title');
   return found;
 }
@@ -34,7 +35,7 @@ describe('phase 3 react ui', () => {
 
     const table = await screen.findByRole('table');
     for (const title of Object.values(SEED.titles)) {
-      expect(within(table).getByText(title)).toBeInTheDocument();
+      expect(titleNodes(title, table)).toHaveLength(1);
     }
     expect(screen.getByRole('columnheader', { name: 'Title' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
@@ -47,8 +48,8 @@ describe('phase 3 react ui', () => {
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
 
-    expect(screen.queryByText(SEED.titles.root)).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(SEED.titles.root)).toBeInTheDocument());
+    expect(titleNodes(SEED.titles.root)).toHaveLength(0);
+    expect(await findTitle(SEED.titles.root)).toBeInTheDocument();
   });
 
   it('S3.1 shows an empty state for a program with no tasks', async () => {
@@ -57,7 +58,7 @@ describe('phase 3 react ui', () => {
 
     const table = await screen.findByRole('table');
     await waitFor(() => {
-      expect(screen.queryByText(SEED.titles.root)).not.toBeInTheDocument();
+      expect(titleNodes(SEED.titles.root)).toHaveLength(0);
     });
     expect(within(table).getAllByRole('row')).toHaveLength(1); // header row only
   });
@@ -66,17 +67,17 @@ describe('phase 3 react ui', () => {
     const user = userEvent.setup();
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.branchA);
+    await findTitle(SEED.titles.branchA);
 
     // "housing" appears in exactly one seeded title, so a correct filter leaves
     // that one row standing and drops the other five.
     await user.type(screen.getByLabelText('Filter tasks'), 'housing');
 
     await waitFor(() => {
-      expect(screen.getByText(SEED.titles.branchA)).toBeInTheDocument();
-      expect(screen.queryByText(SEED.titles.blocked)).not.toBeInTheDocument();
-      expect(screen.queryByText(SEED.titles.independent)).not.toBeInTheDocument();
-      expect(screen.queryByText(SEED.titles.root)).not.toBeInTheDocument();
+      expect(titleNodes(SEED.titles.branchA)).toHaveLength(1);
+      expect(titleNodes(SEED.titles.blocked)).toHaveLength(0);
+      expect(titleNodes(SEED.titles.independent)).toHaveLength(0);
+      expect(titleNodes(SEED.titles.root)).toHaveLength(0);
     });
   });
 
@@ -84,7 +85,7 @@ describe('phase 3 react ui', () => {
     const user = userEvent.setup();
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.root);
+    await findTitle(SEED.titles.root);
 
     const titleHeader = screen.getByRole('columnheader', { name: 'Title' });
     const clickTarget = within(titleHeader).queryByRole('button') ?? titleHeader;
@@ -111,7 +112,7 @@ describe('phase 3 react ui', () => {
     api.latency(300);
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.branchA);
+    await findTitle(SEED.titles.branchA);
 
     await setStatus(user, SEED.titles.branchA, 'doing');
 
@@ -137,7 +138,7 @@ describe('phase 3 react ui', () => {
     api.latency(150);
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.branchA);
+    await findTitle(SEED.titles.branchA);
 
     const before = statusOf(SEED.titles.branchA);
     api.failNext('server_error', 500);
@@ -162,7 +163,7 @@ describe('phase 3 react ui', () => {
   it('S3.5 shows a Ready badge exactly on tasks that are todo with every predecessor done', async () => {
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.root);
+    await findTitle(SEED.titles.root);
 
     // The diamond: root -> branchA, root -> branchB, both -> join, every one of
     // them todo. root and independent are ready, each being todo with nothing
@@ -190,7 +191,7 @@ describe('phase 3 react ui', () => {
     const user = userEvent.setup();
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.root);
+    await findTitle(SEED.titles.root);
 
     // root has no predecessors today; branchA already depends on root.
     // Making branchA a predecessor of root would close a cycle.
@@ -211,7 +212,7 @@ describe('phase 3 react ui', () => {
   it('S3.6 does not show internal note text to a caller outside the owning org', async () => {
     goToProgram(SEED.programId, SEED.users.bob);
     render(<App />);
-    await screen.findByText(SEED.titles.root);
+    await findTitle(SEED.titles.root);
 
     expect(screen.queryByText(SEED.internalNoteText)).not.toBeInTheDocument();
   });

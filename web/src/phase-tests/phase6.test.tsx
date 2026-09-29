@@ -7,10 +7,10 @@
 // rather than running a real HTTP stream, and drives it directly: this is what the phase 6 brief
 // asks for, and it keeps the test decoupled from whatever transport (fetch polyfill, native
 // EventSource) the real browser build would otherwise need.
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import App from '../App';
-import { phaseGate, rowFor, statusOf } from './helpers';
+import { findTitle, phaseGate, rowFor, statusOf, titleNodes } from './helpers';
 import { installFakeApi, SEED, type FakeApiControls } from './fake-api';
 
 const describe = phaseGate(6);
@@ -75,7 +75,7 @@ describe('phase 6 realtime', () => {
   it('S6.3 updates a row when the stream emits task.updated, without issuing a new request', async () => {
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.root);
+    await findTitle(SEED.titles.root);
 
     const source = FakeEventSource.instances.at(-1);
     if (!source) {
@@ -110,8 +110,10 @@ describe('phase 6 realtime', () => {
     // The event updated the existing row in place. It did not append a second row for the same
     // task, and it did not drop the task's other columns while writing the new status in.
     const row = rowFor(SEED.titles.root);
-    expect(within(row).getByText(SEED.titles.root)).toBeInTheDocument();
-    expect(screen.getAllByRole('row').filter((r) => within(r).queryByText(SEED.titles.root))).toHaveLength(1);
+    expect(titleNodes(SEED.titles.root, row)).toHaveLength(1);
+    expect(
+      screen.getAllByRole('row').filter((r) => titleNodes(SEED.titles.root, r).length > 0),
+    ).toHaveLength(1);
     expect(screen.getAllByRole('row')).toHaveLength(Object.keys(SEED.titles).length + 1);
 
     // The whole point of a push-based update is that the client did not have to ask again.
@@ -121,7 +123,7 @@ describe('phase 6 realtime', () => {
   it('S6.3 ignores a task.updated event for a task the current program is not showing', async () => {
     goToProgram(SEED.programId, SEED.users.alice);
     render(<App />);
-    await screen.findByText(SEED.titles.root);
+    await findTitle(SEED.titles.root);
 
     const source = FakeEventSource.instances.at(-1);
     if (!source) throw new Error('App did not construct an EventSource for the program stream');
