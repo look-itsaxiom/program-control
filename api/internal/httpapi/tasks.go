@@ -36,7 +36,7 @@ type taskPayload struct {
 }
 
 type taskListPayload struct {
-	Tasks []taskPayload `json:"tasks"`
+	Tasks []any `json:"tasks"`
 }
 
 // newTaskPayload renders one task for one caller, hiding the internal note from anyone outside
@@ -68,14 +68,6 @@ func newTaskPayload(t store.Task, caller store.User) taskPayload {
 	return p
 }
 
-func newTaskListPayload(tasks []store.Task, caller store.User) taskListPayload {
-	out := taskListPayload{Tasks: make([]taskPayload, 0, len(tasks))}
-	for _, t := range tasks {
-		out.Tasks = append(out.Tasks, newTaskPayload(t, caller))
-	}
-	return out
-}
-
 // --- routes ---------------------------------------------------------------
 
 func (s *server) listTasks(w http.ResponseWriter, r *http.Request) {
@@ -94,12 +86,16 @@ func (s *server) listTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	vis, ok := s.visibilityFor(w, r, access)
+	if !ok {
+		return
+	}
 	tasks, err := s.store.ListTasks(r.Context(), access.ProgramID, status)
 	if err != nil {
 		s.fail(w, r, "list tasks", err)
 		return
 	}
-	writeJSON(w, s.log, http.StatusOK, newTaskListPayload(tasks, caller))
+	writeJSON(w, s.log, http.StatusOK, taskListPayload{Tasks: vis.renderList(tasks, caller)})
 }
 
 func (s *server) listReadyTasks(w http.ResponseWriter, r *http.Request) {
@@ -109,21 +105,34 @@ func (s *server) listReadyTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	vis, ok := s.visibilityFor(w, r, access)
+	if !ok {
+		return
+	}
 	tasks, err := s.store.ListReadyTasks(r.Context(), access.ProgramID)
 	if err != nil {
 		s.fail(w, r, "list ready tasks", err)
 		return
 	}
-	writeJSON(w, s.log, http.StatusOK, newTaskListPayload(tasks, caller))
+	writeJSON(w, s.log, http.StatusOK, taskListPayload{Tasks: vis.renderList(tasks, caller)})
 }
 
 func (s *server) getTask(w http.ResponseWriter, r *http.Request) {
 	caller := userFrom(r.Context())
-	task, ok := s.visibleTask(w, r, r.PathValue("id"))
+	task, access, ok := s.visibleTask(w, r, r.PathValue("id"))
 	if !ok {
 		return
 	}
-	writeJSON(w, s.log, http.StatusOK, newTaskPayload(task, caller))
+	vis, ok := s.visibilityFor(w, r, access)
+	if !ok {
+		return
+	}
+	body := vis.render(task, caller)
+	if body == nil {
+		s.notFound(w)
+		return
+	}
+	writeJSON(w, s.log, http.StatusOK, body)
 }
 
 // createTaskRequest is the POST body. Every optional field is a pointer so "absent" and "null"
@@ -223,7 +232,7 @@ func (s *server) patchTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, ok := s.visibleTask(w, r, r.PathValue("id"))
+	task, _, ok := s.visibleTask(w, r, r.PathValue("id"))
 	if !ok {
 		return
 	}
@@ -238,7 +247,7 @@ func (s *server) patchTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, s.log, http.StatusOK, newTaskPayload(updated, caller))
-	s.notifier.Notify(change)
+	s.publishChange(updated, change)
 }
 
 // --- shared route plumbing -------------------------------------------------
@@ -268,33 +277,34 @@ func (s *server) programAccess(w http.ResponseWriter, r *http.Request) (store.Pr
 
 // visibleTask loads a task by id and confirms the caller can see the program it belongs to,
 // answering 404 for an unknown, soft-deleted, or invisible task alike.
-func (s *server) visibleTask(w http.ResponseWriter, r *http.Request, id string) (store.Task, bool) {
+func (s *server) visibleTask(w http.ResponseWriter, r *http.Request, id string) (store.Task, store.ProgramAccess, bool) {
 	caller := userFrom(r.Context())
 
 	if _, err := uuid.Parse(id); err != nil {
 		s.notFound(w)
-		return store.Task{}, false
+		return store.Task{}, store.ProgramAccess{}, false
 	}
 
 	task, err := s.store.GetTask(r.Context(), id)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.notFound(w)
-		return store.Task{}, false
+		return store.Task{}, store.ProgramAccess{}, false
 	case err != nil:
 		s.fail(w, r, "get task", err)
-		return store.Task{}, false
+		return store.Task{}, store.ProgramAccess{}, false
 	}
 
-	if _, err := s.store.ProgramAccessFor(r.Context(), task.ProgramID, caller.OrgIDs); err != nil {
+	access, err := s.store.ProgramAccessFor(r.Context(), task.ProgramID, caller.OrgIDs)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			s.notFound(w)
 		} else {
 			s.fail(w, r, "resolve program access", err)
 		}
-		return store.Task{}, false
+		return store.Task{}, store.ProgramAccess{}, false
 	}
-	return task, true
+	return task, access, true
 }
 
 // notFound is the one answer this API gives for "does not exist", "is deleted", and "is not

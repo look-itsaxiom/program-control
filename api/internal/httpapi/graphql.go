@@ -20,7 +20,7 @@ import (
 // fresh set of loaders per request so nothing is ever cached across callers or past a write.
 func (s *server) graphqlHandler() http.Handler {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
-		Resolvers: graph.NewResolver(s.store, s.log, s.notifier),
+		Resolvers: graph.NewResolver(s.store, s.log, s.publishChange),
 	}))
 	srv.AddTransport(transport.POST{})
 	srv.SetQueryCache(lru.New[*ast.QueryDocument](100))

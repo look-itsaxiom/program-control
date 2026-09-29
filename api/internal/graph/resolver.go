@@ -10,20 +10,22 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
-	"github.com/look-itsaxiom/program-control/api/internal/notify"
 	"github.com/look-itsaxiom/program-control/api/internal/store"
 )
 
 // Resolver is the root resolver, wired to the store.
 type Resolver struct {
-	Store    *store.Store
-	Log      *slog.Logger
-	Notifier *notify.Notifier
+	Store *store.Store
+	Log   *slog.Logger
+
+	// Publish, when set, is called with every status change a mutation makes, so the graph feeds
+	// the same downstream notifier and live stream the REST routes do.
+	Publish func(store.Task, store.StatusChange)
 }
 
 // NewResolver returns a root resolver backed by st.
-func NewResolver(st *store.Store, log *slog.Logger, notifier *notify.Notifier) *Resolver {
-	return &Resolver{Store: st, Log: log, Notifier: notifier}
+func NewResolver(st *store.Store, log *slog.Logger, publish func(store.Task, store.StatusChange)) *Resolver {
+	return &Resolver{Store: st, Log: log, Publish: publish}
 }
 
 // Error codes this layer puts in extensions.code. They are the stable, machine-checkable part of

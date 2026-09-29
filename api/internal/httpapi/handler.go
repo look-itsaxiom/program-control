@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/look-itsaxiom/program-control/api/internal/events"
 	"github.com/look-itsaxiom/program-control/api/internal/notify"
 	"github.com/look-itsaxiom/program-control/api/internal/store"
 )
@@ -31,7 +32,16 @@ type server struct {
 	store    *store.Store
 	log      *slog.Logger
 	notifier *notify.Notifier
+	broker   *events.Broker
 	secrets  webhookSecrets
+}
+
+// publishChange is the one place a completed status change fans out: to the downstream notifier
+// (phase 5) and to every open live stream (phase 6). Both are best-effort and neither blocks, so
+// a caller can hand a change over after its own response has already been written.
+func (s *server) publishChange(task store.Task, change store.StatusChange) {
+	s.notifier.Notify(change)
+	s.broker.Publish(task)
 }
 
 // NewHandler opens the store, wires the routes, and returns the API. The pool it owns is closed
@@ -58,6 +68,7 @@ func NewHandler(ctx context.Context, cfg Config) (http.Handler, error) {
 		store:    st,
 		log:      log,
 		notifier: notifier,
+		broker:   events.New(),
 		secrets: webhookSecrets{
 			current:  os.Getenv("WEBHOOK_SECRET"),
 			previous: os.Getenv("WEBHOOK_SECRET_PREVIOUS"),
@@ -82,6 +93,9 @@ func (s *server) routes() http.Handler {
 
 	mux.HandleFunc("POST /tasks/{id}/dependencies", s.authenticate(s.addDependency))
 	mux.HandleFunc("DELETE /tasks/{id}/dependencies/{predecessorId}", s.authenticate(s.removeDependency))
+
+	mux.HandleFunc("GET /programs/{programId}/events", s.authenticate(s.listEvents))
+	mux.HandleFunc("GET /programs/{programId}/stream", allowQueryIdentity(s.authenticate(s.streamProgram)))
 
 	mux.HandleFunc("POST /webhooks/vendor", s.receiveVendorWebhook)
 
@@ -135,6 +149,10 @@ func (w *envelopingWriter) Write(b []byte) (int, error) {
 	}
 	return w.ResponseWriter.Write(b)
 }
+
+// Unwrap exposes the writer underneath so http.ResponseController can reach the capabilities a
+// wrapper hides, flushing above all: without this the live stream could never push a byte.
+func (w *envelopingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // fail logs an unexpected error with its request id and answers 500 without echoing the error to
 // the caller, who has no use for it and should not learn about the database from it.

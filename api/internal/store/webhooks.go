@@ -11,10 +11,10 @@ import (
 //
 // It reports whether the message was new. A repeat returns applied=false and no change, not an
 // error: the sender did nothing wrong.
-func (s *Store) ApplyWebhookStatus(ctx context.Context, messageID, taskID, status string) (applied bool, change StatusChange, err error) {
+func (s *Store) ApplyWebhookStatus(ctx context.Context, messageID, taskID, status string) (applied bool, task Task, change StatusChange, err error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return false, StatusChange{}, fmt.Errorf("begin webhook: %w", err)
+		return false, Task{}, StatusChange{}, fmt.Errorf("begin webhook: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -22,19 +22,19 @@ func (s *Store) ApplyWebhookStatus(ctx context.Context, messageID, taskID, statu
 		insert into webhook_messages (id) values ($1) on conflict (id) do nothing
 	`, messageID)
 	if err != nil {
-		return false, StatusChange{}, fmt.Errorf("record webhook message: %w", err)
+		return false, Task{}, StatusChange{}, fmt.Errorf("record webhook message: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return false, StatusChange{}, nil
+		return false, Task{}, StatusChange{}, nil
 	}
 
-	_, change, err = changeStatusTx(ctx, tx, taskID, status, "webhook", nil)
+	task, change, err = changeStatusTx(ctx, tx, taskID, status, "webhook", nil)
 	if err != nil {
-		return false, StatusChange{}, err
+		return false, Task{}, StatusChange{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return false, StatusChange{}, fmt.Errorf("commit webhook: %w", err)
+		return false, Task{}, StatusChange{}, fmt.Errorf("commit webhook: %w", err)
 	}
-	return true, change, nil
+	return true, task, change, nil
 }

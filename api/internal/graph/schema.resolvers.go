@@ -26,7 +26,7 @@ func (r *mutationResolver) SetTaskStatus(ctx context.Context, taskID string, sta
 		return nil, err
 	}
 
-	_, change, err := r.Store.SetTaskStatus(ctx, taskID, status.StoreStatus(), caller.ID)
+	changed, change, err := r.Store.SetTaskStatus(ctx, taskID, status.StoreStatus(), caller.ID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, Errorf(ctx, CodeNotFound, "no such task")
@@ -38,7 +38,9 @@ func (r *mutationResolver) SetTaskStatus(ctx context.Context, taskID string, sta
 	if err != nil {
 		return nil, err
 	}
-	r.Notifier.Notify(change)
+	if r.Publish != nil {
+		r.Publish(changed, change)
+	}
 	return updated, nil
 }
 

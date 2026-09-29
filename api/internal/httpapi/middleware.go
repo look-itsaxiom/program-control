@@ -65,6 +65,21 @@ func (s *server) recoverPanics(next http.Handler) http.Handler {
 	})
 }
 
+// allowQueryIdentity lets a route take its identity from a `userId` query parameter when the
+// header is absent. The browser's EventSource cannot set a request header, so the live stream
+// needs somewhere else to carry the same stand-in-for-a-login identity. It is not a credential,
+// and nothing else about how the caller is resolved changes.
+func allowQueryIdentity(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(headerUserID) == "" {
+			if id := r.URL.Query().Get("userId"); id != "" {
+				r.Header.Set(headerUserID, id)
+			}
+		}
+		next(w, r)
+	}
+}
+
 // authenticate resolves X-User-Id into the calling user and their organizations. There is no
 // session or token here: the header is the whole authentication story, standing in for a login
 // system a later phase would add.

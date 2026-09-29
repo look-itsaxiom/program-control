@@ -77,7 +77,7 @@ func (s *server) receiveVendorWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	applied, change, err := s.store.ApplyWebhookStatus(r.Context(), msg.ID, msg.TaskID, msg.Status)
+	applied, task, change, err := s.store.ApplyWebhookStatus(r.Context(), msg.ID, msg.TaskID, msg.Status)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.notFound(w)
@@ -93,7 +93,7 @@ func (s *server) receiveVendorWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, s.log, http.StatusAccepted, map[string]string{"status": "accepted"})
-	s.notifier.Notify(change)
+	s.publishChange(task, change)
 }
 
 // verify reports whether signature is a valid HMAC of "<timestamp>.<body>" under any secret this

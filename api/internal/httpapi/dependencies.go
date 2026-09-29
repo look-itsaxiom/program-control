@@ -21,7 +21,7 @@ type dependencyPayload struct {
 
 // addDependency records that the task named in the body must finish before the task in the path.
 func (s *server) addDependency(w http.ResponseWriter, r *http.Request) {
-	successor, ok := s.visibleTask(w, r, r.PathValue("id"))
+	successor, _, ok := s.visibleTask(w, r, r.PathValue("id"))
 	if !ok {
 		return
 	}
@@ -38,7 +38,7 @@ func (s *server) addDependency(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	predecessor, ok := s.visibleTask(w, r, *req.PredecessorID)
+	predecessor, _, ok := s.visibleTask(w, r, *req.PredecessorID)
 	if !ok {
 		return
 	}
@@ -68,7 +68,7 @@ func (s *server) addDependency(w http.ResponseWriter, r *http.Request) {
 // removeDependency drops one edge. It answers 204 whether or not the edge was there, so a client
 // retrying a delete does not have to treat the second attempt as a failure.
 func (s *server) removeDependency(w http.ResponseWriter, r *http.Request) {
-	successor, ok := s.visibleTask(w, r, r.PathValue("id"))
+	successor, _, ok := s.visibleTask(w, r, r.PathValue("id"))
 	if !ok {
 		return
 	}

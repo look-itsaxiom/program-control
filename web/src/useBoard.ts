@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  currentUserId,
   ApiError,
   addDependency,
   listReadyTasks,
@@ -61,6 +62,39 @@ export function useBoard(programId: string): Board {
     });
     return () => controller.abort();
   }, [load, programId]);
+
+  // The live feed. A pushed update is merged into the row it names and ignored when it names a
+  // task this board is not showing; either way the board never asks the server for data it has
+  // just been handed. The payload may be the reduced vendor shape, so it is merged over the row
+  // rather than replacing it.
+  useEffect(() => {
+    if (programId === '' || typeof globalThis.EventSource === 'undefined') return;
+
+    const source = new EventSource(
+      `/api/programs/${encodeURIComponent(programId)}/stream?userId=${encodeURIComponent(currentUserId())}`,
+    );
+
+    const onTaskUpdated = (event: MessageEvent) => {
+      let update: Partial<Task>;
+      try {
+        update = JSON.parse(String(event.data)) as Partial<Task>;
+      } catch {
+        return;
+      }
+      if (update.id === undefined) return;
+      setTasks((current) =>
+        current === null || !current.some((t) => t.id === update.id)
+          ? current
+          : current.map((t) => (t.id === update.id ? { ...t, ...update } : t)),
+      );
+    };
+
+    source.addEventListener('task.updated', onTaskUpdated);
+    return () => {
+      source.removeEventListener('task.updated', onTaskUpdated);
+      source.close();
+    };
+  }, [programId]);
 
   const patchStatus = useCallback((taskId: string, status: TaskStatus) => {
     setTasks((current) =>
