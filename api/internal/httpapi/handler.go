@@ -6,12 +6,19 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Config configures the HTTP API.
 type Config struct {
 	DatabaseURL string
 	Logger      *slog.Logger
+
+	// QueryTracer, when set, is installed on every connection the handler opens (phase 4's
+	// query-count contract depends on this: a test builds a counting tracer, passes it here,
+	// and asserts on how many queries a GraphQL request issues).
+	QueryTracer pgx.QueryTracer
 }
 
 // NewHandler returns the HTTP API. This stub answers every route with 501 until you build it.

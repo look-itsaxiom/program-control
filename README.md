@@ -65,7 +65,32 @@ migrations. It ends by telling you what to do next.
   A failing test shows `✗` with the first line of the failure message underneath it, and the
   command exits non-zero.
 - Run `claude` in this folder any time you want to ask your mentor a question, get a hint, or
-  have your code reviewed.
+  have your code reviewed. The mentor is Claude Code itself, reading `CLAUDE.md` and the `mentor`
+  skill in `.claude/`, so there is nothing to start or configure.
+
+## The mentor
+
+Ask it anything: why a query returns the wrong rows, what a partial index is, whether your plan
+for the dependency editor is overcomplicated, or what a failing test in `pnpm check 2` is
+actually claiming. It will read your code and run the phase tests when that helps.
+
+- **Ask a question** and you get a question back, or a concept explained in full, or a pointer
+  into the phase primer or a course lesson. Ask for a concept ("explain dataloaders") and you
+  get the whole concept, taught properly.
+- **Say "hint"** to get the first rung of the ladder for the story you are on, and "next hint"
+  for the one after. There are three rungs per story, each more concrete than the last, and the
+  mentor tells you which rung you are on. It never volunteers one.
+- **Paste code and ask for a review** and it names what is wrong, what that costs in production
+  or in an interview, and where to look, without fixing it for you.
+
+What it will not do: write, paste, or edit implementation code under `api/internal`,
+`api/migrations`, `api/cmd`, `api/phase_tests`, or `web/src`; state the answer to a story; hand
+you a hint you did not ask for; or look at the `solutions` branch. `.claude/settings.json` denies
+the file tools on those paths, so the mentor cannot slip even if you talk it into trying. That is
+the whole point: you are building this so you can answer questions about it later.
+
+The first time you run `claude` here it asks whether you trust this folder. Say yes, or it will
+keep asking permission every time it wants to run `pnpm check` for you.
 
 ## Rules of the game
 

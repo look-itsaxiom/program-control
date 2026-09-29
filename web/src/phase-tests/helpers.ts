@@ -13,5 +13,5 @@ export function phaseGate(n: number) {
   return describe;
 }
 
-// Task 7 fills in fakeFetch(routes): a small in-test server that implements
-// the API/GraphQL contract for a given phase's stories.
+// The fake in-test server that implements the phase 2 REST contract for
+// phase 3's acceptance tests lives in ./fake-api.ts (installFakeApi()).

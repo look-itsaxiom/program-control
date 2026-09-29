@@ -8,6 +8,7 @@
     "setup": "node scripts/setup.mjs",
     "dev": "node scripts/dev.mjs",
     "check": "node scripts/check.mjs",
+    "seed": "node scripts/seed.mjs",
     "db:up": "node scripts/db.mjs up",
     "db:down": "node scripts/db.mjs down",
     "db:migrate": "node scripts/db.mjs migrate",
