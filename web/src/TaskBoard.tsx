@@ -222,12 +222,13 @@ function TaskRow({
           className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
         >
           <option value="">Add a predecessor</option>
-          {/* The option text says what picking it does rather than naming the task on its own.
-              A bare title here would read as a second copy of that task's row to anything
-              scanning the table by text, and would collide with the row's own title cell. */}
+          {/* Each option is named for the task it would add, and nothing else: S4.6 reaches a
+              predecessor by the option's accessible name, so "Assemble and test" has to mean
+              that task here exactly as it does in its own row. The select's own label carries
+              the "add a dependency to..." sense, so the option does not have to. */}
           {candidates.map((other) => (
             <option key={other.id} value={other.id}>
-              {`Requires ${other.title}`}
+              {other.title}
             </option>
           ))}
         </select>
