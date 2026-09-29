@@ -27,7 +27,10 @@ jumping around.
   implemented) that seeds a demo world and is idempotent: running it twice against the same
   database leaves the same rows in place, not duplicates.
 - `scripts/demo.md` is a written walkthrough, aimed at fitting inside about three minutes, of the
-  seeded world: what to click or call, in what order, and what it's meant to show at each step.
+  seeded world: what to click or call, in what order, and what it's meant to show at each step. It
+  names `pnpm seed` as the step that fills the database the rest of the walkthrough assumes, so a
+  reader starting from a fresh clone can follow it without already knowing how the world got
+  there.
 
 ## S7.2: CI proves it
 

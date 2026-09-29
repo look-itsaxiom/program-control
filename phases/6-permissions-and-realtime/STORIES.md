@@ -81,6 +81,6 @@ never receives an event about it.
   this connection's caller, the server writes one Server-Sent Event: `event: task.updated`,
   `data:` the task's full JSON in whatever shape (full or reduced) S6.1 would give that caller for
   that task via `GET /tasks/{id}`.
-- The web client opens this stream (`EventSource` or an equivalent) once it knows which program
-  and user it is, and updates the affected row when a `task.updated` event names a task it is
-  currently displaying, without issuing a new request for the board's data.
+- The web client consumes this stream with `EventSource`, constructing one once it knows which
+  program and user it is, and updates the affected row when a `task.updated` event names a task it
+  is currently displaying, without issuing a new request for the board's data.

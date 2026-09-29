@@ -122,9 +122,11 @@ who can't or won't point and click.
 **Acceptance:** every interactive element on the board (filter input, sortable column headers,
 each row's status control, each row's dependency control) can be reached with `Tab` alone, in a
 sensible order, and operated without a pointer (a header's sort can be triggered with `Enter` or
-`Space`, a `<select>` opened and changed with the keyboard as browsers already support). Nothing
-on the board is a `div` or `span` pretending to be interactive without the keyboard support that
-comes for free with a real button, link, or form control.
+`Space`, a `<select>` opened and changed with the keyboard as browsers already support). Every interactive
+element on the board is a real button, link, or form control, so it carries the keyboard support
+those elements already have.
 
-**Contract:** none beyond the DOM already named in S3.1 through S3.4; this story is about how
-those elements behave, not about any additional element.
+**Contract:** every interactive element named in S3.1 through S3.4 is a native interactive
+element (`<button>`, `<a href>`, `<select>`, `<input>`) or carries the role, `tabindex`, and key
+handlers that element would have given it. This story adds no new element to the DOM S3.1 through
+S3.4 already names; it states what those elements have to be.
