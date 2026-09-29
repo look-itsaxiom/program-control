@@ -56,10 +56,16 @@ func New(ctx context.Context, databaseURL string, tracer pgx.QueryTracer) (*Stor
 	if err != nil {
 		return nil, fmt.Errorf("open pool: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
+	// Acquire proves the database is reachable at startup. It is deliberately not Ping, which
+	// would execute a statement: phase 4's query-count contract counts every statement the
+	// handler's connections run, and opening the store should not spend one of them.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("ping database: %w", err)
+		return nil, fmt.Errorf("connect to database: %w", err)
 	}
+	conn.Release()
+
 	return &Store{pool: pool}, nil
 }
 

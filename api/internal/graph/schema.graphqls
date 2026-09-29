@@ -1,2 +1,45 @@
-# Your GraphQL schema goes here. It is empty until phase 4; write your types, queries, and
-# mutations, then run `go tool gqlgen generate` from api/ to generate resolvers and models.
+# The graph over the same domain the REST API serves. Field and type names here are the contract;
+# how each one is resolved is not.
+
+type Query {
+  program(id: ID!): Program
+  me: User!
+}
+
+type Mutation {
+  setTaskStatus(taskId: ID!, status: TaskStatus!): Task!
+  addDependency(taskId: ID!, predecessorId: ID!): Task!
+}
+
+type Program {
+  id: ID!
+  name: String!
+  tasks(status: TaskStatus): [Task!]!
+  readyTasks: [Task!]!
+}
+
+type Task {
+  id: ID!
+  title: String!
+  status: TaskStatus!
+  estimateMinutes: Int
+  dueOn: String
+  "Null, rather than absent, for a caller outside this task's owning organization."
+  internalNote: String
+  assignee: User
+  predecessors: [Task!]!
+  program: Program!
+}
+
+type User {
+  id: ID!
+  displayName: String!
+  email: String!
+}
+
+enum TaskStatus {
+  TODO
+  DOING
+  BLOCKED
+  DONE
+}

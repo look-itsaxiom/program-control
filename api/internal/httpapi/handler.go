@@ -68,6 +68,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/dependencies", s.authenticate(s.addDependency))
 	mux.HandleFunc("DELETE /tasks/{id}/dependencies/{predecessorId}", s.authenticate(s.removeDependency))
 
+	mux.Handle("POST /graphql", s.graphqlHandler())
+
 	return withRequestID(s.recoverPanics(s.envelopeMuxErrors(mux)))
 }
 

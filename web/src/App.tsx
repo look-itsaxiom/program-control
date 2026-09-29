@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { GraphqlBoard } from './GraphqlBoard';
 import { TaskBoard } from './TaskBoard';
 import { useBoard } from './useBoard';
 
@@ -24,9 +25,23 @@ function useProgramId(): string {
   return programId;
 }
 
+/** usesGraphql reads the transport switch. Anything but the exact string keeps the board on REST. */
+function usesGraphql(): boolean {
+  try {
+    return localStorage.getItem('programControl.transport') === 'graphql';
+  } catch {
+    return false;
+  }
+}
+
+/** RestBoard is phase 3's board, unchanged: fetch against the REST endpoints. */
+function RestBoard({ programId }: { programId: string }) {
+  return <TaskBoard board={useBoard(programId)} />;
+}
+
 export default function App() {
   const programId = useProgramId();
-  const board = useBoard(programId);
+  const [graphql] = useState(usesGraphql);
 
   if (programId === '') {
     return (
@@ -42,7 +57,7 @@ export default function App() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
-      <TaskBoard board={board} />
+      {graphql ? <GraphqlBoard programId={programId} /> : <RestBoard programId={programId} />}
     </main>
   );
 }

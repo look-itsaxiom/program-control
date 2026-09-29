@@ -16,6 +16,14 @@ resolver:
   dir: internal/graph
   package: graph
 
-# autobind and models: left empty. Fill these in once you have a schema and domain types to wire
-# gqlgen's generated models to your own store types, if you want that instead of gqlgen-owned
-# models.
+# The Program, Task, and User structs are hand-written in internal/graph/model/models.go. Binding
+# them here rather than letting gqlgen generate them is what makes the loaders possible: a field
+# the struct does not carry (Program.tasks, Task.predecessors) becomes a resolver gqlgen calls on
+# demand, instead of a struct field every query would have to fill eagerly.
+models:
+  Program:
+    model: github.com/look-itsaxiom/program-control/api/internal/graph/model.Program
+  Task:
+    model: github.com/look-itsaxiom/program-control/api/internal/graph/model.Task
+  User:
+    model: github.com/look-itsaxiom/program-control/api/internal/graph/model.User

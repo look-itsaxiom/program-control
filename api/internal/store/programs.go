@@ -8,6 +8,7 @@ import (
 // and which of the caller's own organizations grants them the access.
 type ProgramAccess struct {
 	ProgramID string
+	Name      string
 	OwnerOrg  string
 
 	// CallerOrg is the caller's organization that reaches this program: the owning organization
@@ -25,6 +26,7 @@ func (a ProgramAccess) IsOwner() bool { return a.CallerOrg == a.OwnerOrg }
 func (s *Store) ProgramAccessFor(ctx context.Context, programID string, orgIDs []string) (ProgramAccess, error) {
 	const q = `
 		select
+			p.name,
 			p.org_id,
 			coalesce(
 				(select o from unnest($2::uuid[]) as o where o = p.org_id),
@@ -36,7 +38,7 @@ func (s *Store) ProgramAccessFor(ctx context.Context, programID string, orgIDs [
 	`
 	access := ProgramAccess{ProgramID: programID}
 	var callerOrg *string
-	if err := s.pool.QueryRow(ctx, q, programID, orgIDs).Scan(&access.OwnerOrg, &callerOrg); err != nil {
+	if err := s.pool.QueryRow(ctx, q, programID, orgIDs).Scan(&access.Name, &access.OwnerOrg, &callerOrg); err != nil {
 		return ProgramAccess{}, notFound(err, "program access")
 	}
 	if callerOrg == nil {

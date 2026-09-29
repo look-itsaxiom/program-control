@@ -10,19 +10,8 @@ import {
   type Task,
   type TaskStatus,
 } from './api';
+import type { Board } from './board';
 
-export interface Board {
-  /** null while the first load is still in flight, which is what the loading state keys off. */
-  tasks: Task[] | null;
-  readyIds: Set<string>;
-  loadError: string | null;
-  /** The message read out when a status change is rolled back. Empty when there is nothing to say. */
-  announcement: string;
-  /** Per-task message from a refused dependency, shown inline beside that row's control. */
-  dependencyErrors: Record<string, string>;
-  changeStatus: (task: Task, status: TaskStatus) => Promise<void>;
-  addTaskDependency: (task: Task, predecessorId: string) => Promise<void>;
-}
 
 /** ignoreAbort swallows the rejection a fetch produces when its request is cancelled. */
 function isAbort(error: unknown): boolean {
@@ -111,6 +100,7 @@ export function useBoard(programId: string): Board {
             ? `${name} already has to wait for this one, so this would be a cycle. Nothing was changed.`
             : `Could not add ${name} as a dependency.`;
         setDependencyErrors((current) => ({ ...current, [task.id]: message }));
+        setAnnouncement(message);
       }
     },
     [load, tasks],
