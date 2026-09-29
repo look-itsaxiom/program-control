@@ -87,8 +87,7 @@ function runGoPhase(n, verbose) {
     shell: false,
   });
   if (result.error) {
-    console.error(`Failed to run go: ${result.error.message}`);
-    process.exit(1);
+    throw new Error(`Failed to run go: ${result.error.message}`);
   }
 
   const stdout = result.stdout || '';
@@ -124,11 +123,31 @@ function runGoPhase(n, verbose) {
     }
   }
 
-  const tests = [...byTest.values()].map((entry) => ({
-    name: entry.name,
-    status: entry.status,
-    message: entry.status === 'fail' ? extractGoFailureMessage(entry.output) : '',
-  }));
+  // Go subtests (t.Run) report as their own "Name/subname" events. Count only
+  // the top-level test toward the scoreboard total; a subtest failure already
+  // fails its parent's own pass/fail event, but the parent's own captured
+  // output rarely has the assertion detail (that's on the subtest's output),
+  // so borrow the first failing subtest's message for display.
+  const topLevel = new Map();
+  const firstFailingSubtest = new Map(); // parent name -> its entry
+  for (const entry of byTest.values()) {
+    const slash = entry.name.indexOf('/');
+    if (slash === -1) {
+      topLevel.set(entry.name, entry);
+    } else if (entry.status === 'fail') {
+      const parentName = entry.name.slice(0, slash);
+      if (!firstFailingSubtest.has(parentName)) firstFailingSubtest.set(parentName, entry);
+    }
+  }
+
+  const tests = [...topLevel.values()].map((entry) => {
+    if (entry.status !== 'fail') return { name: entry.name, status: entry.status, message: '' };
+    let message = extractGoFailureMessage(entry.output);
+    if (!message && firstFailingSubtest.has(entry.name)) {
+      message = extractGoFailureMessage(firstFailingSubtest.get(entry.name).output);
+    }
+    return { name: entry.name, status: entry.status, message };
+  });
 
   if (tests.length === 0 && result.status !== 0) {
     // The package failed to build/run before any test could report - surface
@@ -152,6 +171,14 @@ function statusFromVitest(status) {
   return 'skip'; // skipped, pending, todo
 }
 
+// phaseFullNameMatches checks whether a Vitest assertion's fullName belongs to
+// phase n. It requires a word boundary after the number so "phase 1" never
+// matches "phase 10" (this project only has single-digit phases, 0 through
+// 7, but the boundary check costs nothing and avoids that class of bug).
+function phaseFullNameMatches(fullName, n) {
+  return new RegExp(`\\bphase ${n}(?!\\d)`).test(fullName);
+}
+
 function runVitestPhase(n, verbose, tmpDir) {
   const outFile = path.join(tmpDir, `vitest-phase-${n}.json`);
   const args = ['--filter', 'web', 'exec', 'vitest', 'run'];
@@ -167,8 +194,7 @@ function runVitestPhase(n, verbose, tmpDir) {
     stdio: verbose ? 'inherit' : 'pipe',
   });
   if (result.error) {
-    console.error(`Failed to run pnpm: ${result.error.message}`);
-    process.exit(1);
+    throw new Error(`Failed to run pnpm: ${result.error.message}`);
   }
 
   let report;
@@ -192,7 +218,7 @@ function runVitestPhase(n, verbose, tmpDir) {
   const tests = [];
   for (const fileResult of report.testResults || []) {
     for (const assertion of fileResult.assertionResults || []) {
-      if (!assertion.fullName || !assertion.fullName.includes(`phase ${n}`)) continue;
+      if (!assertion.fullName || !phaseFullNameMatches(assertion.fullName, n)) continue;
       const status = statusFromVitest(assertion.status);
       tests.push({
         name: assertion.fullName,
@@ -248,42 +274,47 @@ function main() {
   ensureDb();
 
   const tmpDir = mkdtempSync(path.join(tmpdir(), 'program-control-check-'));
+  let exitCode = 0;
   try {
     if (phase !== null) {
       const result = checkPhase(phase, { verbose }, tmpDir);
       printPhase(result);
-      process.exit(result.failed > 0 ? 1 : 0);
-    }
-
-    const results = [];
-    for (const n of [0, 1, 2, 3, 4, 5, 6, 7]) {
-      results.push(checkPhase(n, { verbose }, tmpDir));
-    }
-
-    console.log('Phase  Passing  Status');
-    let anyFailed = false;
-    for (const result of results) {
-      const { phase: n, passed, total, failed, tests } = result;
-      if (failed > 0) anyFailed = true;
-      const noTestsYet = tests.length === 0;
-      const status = noTestsYet ? 'no tests yet' : failed > 0 ? 'FAILING' : 'passing';
-      const score = noTestsYet ? '-' : `${passed}/${total}`;
-      console.log(`${String(n).padEnd(6)} ${score.padEnd(8)} ${status}`);
-    }
-
-    const failingResults = results.filter((r) => r.failed > 0);
-    if (failingResults.length > 0) {
-      console.log('');
-      for (const result of failingResults) {
-        console.log(`Phase ${result.phase} failures:`);
-        printTestLines(result.tests.filter((t) => t.status === 'fail'));
+      exitCode = result.failed > 0 ? 1 : 0;
+    } else {
+      const results = [];
+      for (const n of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        results.push(checkPhase(n, { verbose }, tmpDir));
       }
-    }
 
-    process.exit(anyFailed ? 1 : 0);
+      console.log('Phase  Passing  Status');
+      let anyFailed = false;
+      for (const result of results) {
+        const { phase: n, passed, total, failed, tests } = result;
+        if (failed > 0) anyFailed = true;
+        const noTestsYet = tests.length === 0;
+        const status = noTestsYet ? 'no tests yet' : failed > 0 ? 'FAILING' : 'passing';
+        const score = noTestsYet ? '-' : `${passed}/${total}`;
+        console.log(`${String(n).padEnd(6)} ${score.padEnd(8)} ${status}`);
+      }
+
+      const failingResults = results.filter((r) => r.failed > 0);
+      if (failingResults.length > 0) {
+        console.log('');
+        for (const result of failingResults) {
+          console.log(`Phase ${result.phase} failures:`);
+          printTestLines(result.tests.filter((t) => t.status === 'fail'));
+        }
+      }
+
+      exitCode = anyFailed ? 1 : 0;
+    }
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    exitCode = 1;
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
+  process.exit(exitCode);
 }
 
 main();
